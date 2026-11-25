@@ -486,7 +486,7 @@
   // ── NOTIFIKASI MEDIA (nama + gambar yang tampil di notif/lockscreen) ──
   const MEDIA_SESSION_INFO = {
     artist: 'Iyan Market',          // ganti nama yang tampil di bawah judul lagu
-    album: 'klip sound',          // ganti nama sumber/album
+    album: 'Iyan playlist',          // ganti nama sumber/album
     artworkUrl: 'https://cdn.phototourl.com/anon/2026-11-25-590f59b4-f465-4998-8bd5-6cf6a79ff37b.jpg' // ganti dengan link gambar (persegi, min 512x512)
   };
   function updateMediaSession(it) {
@@ -510,6 +510,7 @@
     navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
   }
+  updateMediaSession(MUSIC_TRACKS[0]); // set dari awal, jangan nunggu next/prev dulu
 
   function activePlayer() {
     const it = getPlaylist()[currentIndex];
