@@ -921,6 +921,8 @@
   if (currentUser) currentUser = normalizeUser(currentUser);
 
   let vercelAccounts = JSON.parse(localStorage.getItem('iyan_vercel')) || [];
+  let iyanDeployFiles = [];
+  let iyanDeployInProgress = false;
   let shopStock = []; 
 
   function normalizeUser(u) {
