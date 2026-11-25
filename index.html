@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Iyan Console</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="image" href="https://cdn.phototourl.com/anon/2026-11-25-23f9a6ca-f98c-4a01-a6c1-468c0dfc9930.jpg">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
@@ -269,6 +271,23 @@
       opacity: 0; transition: transform 0.3s var(--ease-spring), opacity 0.3s var(--ease-spring); pointer-events: none;
   }
   .toast-notif.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  /* ═════════ PERF: blur lebih ringan (penyebab lag di HP) ═════════ */
+  .wanz-card, .glass, .bg-card { -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+
+  /* ═════════ LENIS ═════════ */
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  .lenis.lenis-stopped { overflow: hidden; }
+  .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+
+  /* ═════════ GSAP: judul muncul per kata ═════════ */
+  .sw-line { display: inline; }
+  .sw { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .16em; margin-bottom: -.16em; }
+  .sw-i { display: inline-block; will-change: transform, opacity; }
+
+  /* ═════════ MOTION: card masuk + hover ═════════ */
+  .m-anim { transition-property: background-color, border-color, box-shadow !important; }
+  .m-anim:active { transform: none; }
 </style>
 </head>
 <body class="flex flex-col">
@@ -344,7 +363,7 @@
   </div>
 
   <!-- ═══════════ WELCOME 1 ═══════════ -->
-  <div id="welcome-screen-1" class="hidden fixed inset-0 z-[400] w-[100vw] h-[100dvh] relative overflow-hidden flex flex-col justify-center p-8 bg-black/80">
+  <div id="welcome-screen-1" class="fixed inset-0 z-[400] w-[100vw] h-[100dvh] relative overflow-hidden flex flex-col justify-center p-8 bg-black/80">
     <div class="relative z-20 w-full max-w-md mx-auto mb-20">
       <h1 class="text-2xl font-bold mb-2 animate-welcome-text text-zinc-200 tracking-wide drop-shadow">WELCOME IN</h1>
       <h1 class="text-4xl font-extrabold tracking-tight animate-welcome-text-delay leading-tight text-white drop-shadow-lg">
@@ -451,6 +470,11 @@
     </div>
   </div>
 
+<!-- GSAP + ScrollTrigger, Motion, Lenis -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/motion@11.18.2/dist/motion.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.20/dist/lenis.min.js"></script>
 <script>
   // ═══════════════════════════════════════════════════════════
   // SUPABASE CONFIG
@@ -966,8 +990,14 @@
   let isCleanMode = false;
   let isPromoActive = false;
 
-  let currentUser = JSON.parse(sessionStorage.getItem('iyan_current')) || null;
-  if (currentUser) currentUser = normalizeUser(currentUser);
+  let currentUser = null;
+  // Cache profil di localStorage: ketika browser dibuka lagi UI langsung punya data user (tanpa nunggu jaringan)
+  try {
+    const _raw = localStorage.getItem('iyan_current');
+    const _hasToken = Object.keys(localStorage).some(k => /^sb-.+-auth-token$/.test(k));
+    if (_raw && _hasToken) currentUser = normalizeUser(JSON.parse(_raw));
+  } catch (e) { currentUser = null; }
+  function cacheUser() { try { localStorage.setItem('iyan_current', JSON.stringify(currentUser)); } catch (e) {} }
 
   let vercelAccounts = JSON.parse(localStorage.getItem('iyan_vercel')) || [];
   let iyanDeployFiles = [];
@@ -1007,43 +1037,46 @@
   }
 
   // ── AUTH HELPER ──
-async function fetchAndSetUser(user) {
-  try {
-      // 1. Kasih jeda 0.5 detik biar token login bener-bener nempel ke Supabase
-      await new Promise(resolve => setTimeout(resolve, 500));
+  const _userInflight = {};
+  function fetchAndSetUser(user, opts = {}) {
+    if (!user) return Promise.resolve();
+    if (_userInflight[user.id]) return _userInflight[user.id];   // cegah fetch dobel
+    const p = _fetchAndSetUser(user, opts).finally(() => { delete _userInflight[user.id]; });
+    _userInflight[user.id] = p;
+    return p;
+  }
+  async function _fetchAndSetUser(user, opts) {
+    try {
+      // Jeda 0.5 dtk HANYA saat baru login (token perlu nempel). Saat restore sesi: langsung.
+      if (!opts.fast) await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 2. Ambil data profil (pakai .single() biar kalau error langsung ketahuan)
-      let { data: profile, error } = await supabaseClient
-          .from('profiles')
-          .select('role, custom_id, vercel_limit, full_name, avatar, background')
-          .eq('id', user.id)
-          .single();
-      
+      const { data: profile, error } = await supabaseClient
+        .from('profiles')
+        .select('role, custom_id, vercel_limit, full_name, avatar, background')
+        .eq('id', user.id)
+        .single();
+
       if (error) {
-          console.error('[Profile] Gagal ambil dari database:', error);
-          alert("Gagal mengambil data profil. Error: " + error.message);
-          return; // Langsung stop, jangan lanjut kalau gagal
+        console.error('[Profile] Gagal ambil dari database:', error);
+        if (!opts.fast) alert("Gagal mengambil data profil. Error: " + error.message);
+        return; // saat restore: tetap pakai cache
       }
 
-      // 3. Cetak di console buat mastiin data dari DB dapet
-      console.log("Data dari DB:", profile);
-
       currentUser = normalizeUser({
-          id: user.id, 
-          customId: profile.custom_id || 0, 
-          username: user.email, 
-          name: profile.full_name || user.user_metadata?.full_name || "User",
-          role: profile.role || "user", 
-          vercelLimit: profile.vercel_limit || 0, 
-          avatar: profile.avatar || null, 
-          background: profile.background || null
+        id: user.id,
+        customId: profile.custom_id || 0,
+        username: user.email,
+        name: profile.full_name || user.user_metadata?.full_name || "User",
+        role: profile.role || "user",
+        vercelLimit: profile.vercel_limit || 0,
+        avatar: profile.avatar || null,
+        background: profile.background || null
       });
-      sessionStorage.setItem('iyan_current', JSON.stringify(currentUser));
-      
-  } catch (err) {
+      cacheUser();
+    } catch (err) {
       console.error("Error fatal di fetchAndSetUser:", err);
+    }
   }
-}
 
   // ── LOGIN & REGISTER ──
   function openLogin() { document.getElementById('dropdown-menu').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); }
@@ -1163,23 +1196,26 @@ async function fetchAndSetUser(user) {
   async function logout() {
     if (!confirm('Yakin ingin logout?')) return;
     await supabaseClient.auth.signOut();
-    sessionStorage.removeItem('iyan_current');
+    localStorage.removeItem('iyan_current');
     currentUser = null;
     location.reload();
   }
 
   function continueAsUser() {
     currentUser = normalizeUser({ id: 0, username: 'guest', role: 'user', name: 'Guest User', vercelLimit: 0 });
-    sessionStorage.setItem('iyan_current', JSON.stringify(currentUser));
+    cacheUser();
     closeLogin(); showDashboard(); autoPlayMusic(true);
   }
 
   function showWelcome2() { document.getElementById('welcome-screen-1').classList.add('hidden'); document.getElementById('welcome-screen-2').classList.remove('hidden'); }
-  function proceedToDashboard() { document.getElementById('welcome-screen-2').classList.add('hidden'); showDashboard(); autoPlayMusic(true); }
+  async function proceedToDashboard() {
+    // Tunggu pemulihan sesi (biasanya sudah selesai selama intro), maksimal 2.5 dtk
+    await Promise.race([authReady, new Promise(r => setTimeout(r, 2500))]);
+    document.getElementById('welcome-screen-2').classList.add('hidden');
+    showDashboard(); autoPlayMusic(true);
+  }
 
-  function showDashboard() {
-    ['login-screen', 'register-screen', 'welcome-screen-1', 'welcome-screen-2'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    document.getElementById('dashboard').classList.remove('hidden');
+  function applyUserChrome() {
     const menuLoginBtn = document.getElementById('menu-login-btn');
     const menuLogoutBtn = document.getElementById('menu-logout-btn');
     const menuAddPremiumBtn = document.getElementById('menu-add-premium-btn');
@@ -1190,6 +1226,14 @@ async function fetchAndSetUser(user) {
     const navAvatar = document.getElementById('nav-profile-avatar');
     if (currentUser && currentUser.avatar) navAvatar.innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
     else navAvatar.innerHTML = `<span class="text-[10px] font-bold text-white">${currentUser ? currentUser.username.charAt(0).toUpperCase() : '?'}</span>`;
+    const n = document.getElementById('home-user-name');
+    if (n) n.textContent = currentUser ? (currentUser.name || 'User') : 'Guest';
+  }
+
+  function showDashboard() {
+    ['login-screen', 'register-screen', 'welcome-screen-1', 'welcome-screen-2'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    document.getElementById('dashboard').classList.remove('hidden');
+    applyUserChrome();
     switchTab('home');
   }
 
@@ -1205,12 +1249,20 @@ async function fetchAndSetUser(user) {
   
   function openPremiumAccountsModal() { alert("Fitur manajemen premium sudah dipindah ke Profil Developer."); }
 
+  let currentTab = 'home';
   function switchTab(tab) {
+    currentTab = tab;
     document.getElementById('dropdown-menu').classList.add('hidden');
     const main = document.getElementById('main-content');
+    if (window.ScrollTrigger) ScrollTrigger.getAll().forEach(t => t.kill());
+    entryUntil = performance.now() + 2500;      // jendela animasi masuk untuk render tab ini
     main.innerHTML = '';
+    // NB: class "fade-in" dihapus — opacity animasi di parent bikin backdrop-blur card hilang lalu "pop" (kelihatan lag)
     if (tab === 'profil') main.className = 'flex-1 overflow-y-auto hide-scroll pb-24 relative z-10';
-    else main.className = 'flex-1 overflow-y-auto hide-scroll px-4 pb-24 relative z-10 fade-in';
+    else main.className = 'flex-1 overflow-y-auto hide-scroll px-4 pb-24 relative z-10';
+    if (lenis) main.classList.add('lenis', 'lenis-smooth');
+    main.scrollTop = 0;
+    if (lenis) { try { lenis.scrollTo(0, { immediate: true, force: true }); } catch (e) {} }
     
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     if (tab === 'premium') { const homeBtn = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.getAttribute('onclick')?.includes('home')); if (homeBtn) homeBtn.classList.add('active'); }
@@ -1219,7 +1271,10 @@ async function fetchAndSetUser(user) {
 
     if (tab === 'home') { renderHome(main); currentSlideIndex = 0; initSliderSwipe(); startHomeSlider(); setTimeout(() => autoPlayMusic(false), 30); }
     else if (tab === 'info') renderInfo(main);
-    else if (tab === 'shop') renderShop(main);
+    else if (tab === 'shop') {
+      renderShop(main);
+      if (!stockLoaded) stockPromise.then(() => { if (currentTab === 'shop') { entryUntil = 0; renderShop(document.getElementById('main-content')); } });
+    }
     else if (tab === 'vercel') renderIyanDeploy(main);
     else if (tab === 'profil') renderProfil(main);
     else if (tab === 'premium') renderPremiumPage(main);
@@ -1302,7 +1357,7 @@ async function fetchAndSetUser(user) {
         </div>
         <div>
           <h2 class="text-xl font-extrabold text-white">IYAN CONSOLE</h2>
-          <p class="text-xs text-zinc-400">Selamat datang, ${currentUser ? (currentUser.name || 'User') : 'Guest'}</p>
+          <p class="text-xs text-zinc-400">Selamat datang, <span id="home-user-name">${currentUser ? (currentUser.name || 'User') : 'Guest'}</span></p>
         </div>
       </div>
       <div id="home-slider-container" class="wanz-card mb-6 overflow-hidden relative shadow-lg w-full aspect-[16/9] bg-zinc-900">
@@ -1340,6 +1395,17 @@ async function fetchAndSetUser(user) {
         </button>
       </div>
       
+      <!-- KOTAK NOTED (dipindah ke paling atas) -->
+      <div class="wanz-card p-5 border-l-4 border-l-white/40 bg-gradient-to-r from-white/5 to-transparent relative overflow-hidden mb-3">
+        <h4 class="text-xs font-extrabold text-white mb-2 tracking-widest uppercase flex items-center gap-2">
+           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+           NOTED:
+        </h4>
+        <p class="text-xs text-zinc-300 leading-relaxed font-medium">
+          cuma dikit yang bisa gw tambahin di fitur, tujuan gw buat web ini? keknya murni cuma gabut doang😴, tapi gapapa lah ya, karena udah di buat, lihat lihat dulu aja apa yang ada disini, jangan lupa juga lihat <strong class="text-white">STOCK ID</strong> punya gw, siapa tau tertarik😗.
+        </p>
+      </div>
+
       <!-- KOTAK TAMBAHAN 1: QURAN -->
       <div class="wanz-card p-5 border-l-4 border-l-white/40 bg-gradient-to-r from-white/5 to-transparent relative overflow-hidden mb-3">
         <p class="text-right text-lg text-white font-serif mb-3" dir="rtl">وَمَا رَبُّكَ بِغَافِلٍ عَمَّا تَعْمَلُونَ</p>
@@ -1362,17 +1428,6 @@ async function fetchAndSetUser(user) {
           "jangan takut gagal, karena kegagalan adalah bagian dari proses belajar"
         </p>
         <p class="text-xs text-zinc-400 text-right mt-2 font-bold">-BJ.Habibie-</p>
-      </div>
-
-      <!-- KOTAK ORIGINAL: NOTED -->
-      <div class="wanz-card p-5 border-l-4 border-l-white/40 bg-gradient-to-r from-white/5 to-transparent relative overflow-hidden">
-        <h4 class="text-xs font-extrabold text-white mb-2 tracking-widest uppercase flex items-center gap-2">
-           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-           NOTED:
-        </h4>
-        <p class="text-xs text-zinc-300 leading-relaxed font-medium">
-          cuma dikit yang bisa gw tambahin di fitur, tujuan gw buat web ini? keknya murni cuma gabut doang😴, tapi gapapa lah ya, karena udah di buat, lihat lihat dulu aja apa yang ada disini, jangan lupa juga lihat <strong class="text-white">STOCK ID</strong> punya gw, siapa tau tertarik😗.
-        </p>
       </div>
     `;
   }
@@ -2329,7 +2384,7 @@ async function fetchAndSetUser(user) {
   }
   
   async function saveUserData() { 
-    try { sessionStorage.setItem('iyan_current', JSON.stringify(currentUser)); } catch(e) { console.warn('sessionStorage penuh, lanjut simpan ke database'); }
+    cacheUser();
     const { error } = await supabaseClient.from('profiles').update({
         avatar: currentUser.avatar,
         background: currentUser.background
@@ -2356,44 +2411,242 @@ async function fetchAndSetUser(user) {
   async function uploadToCatbox() { const input = document.getElementById('img-upload-input'); const file = input?.files[0]; const result = document.getElementById('img-url-result'); if (!file) return alert('Pilih gambar dulu!'); result.classList.remove('hidden'); result.innerHTML = skeletonCard(2); try { const fd = new FormData(); fd.append('reqtype', 'fileupload'); fd.append('fileToUpload', file); const res = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fd }); const url = (await res.text()).trim(); if (!url.startsWith('http')) throw new Error(url || 'Gagal upload'); result.innerHTML = `<div class="bg-white/5 rounded-xl p-3 border border-white/10"><p class="text-[10px] text-zinc-400 mb-1">URL:</p><input readonly value="${url}" class="w-full bg-black/50 text-xs text-white p-2 rounded font-mono" onclick="this.select()"><button onclick="copyToClipboard('${url}', this)" class="w-full mt-2 bg-white text-black font-bold rounded-lg py-2 text-[11px]">Copy URL</button></div>`; } catch (e) { result.innerHTML = `<div class="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-white text-center">❌ Gagal: ${e.message}</div>`; } }
   async function searchPinterest() { const q = document.getElementById('pin-query')?.value.trim(); const result = document.getElementById('pin-result'); if (!q) return alert('Masukkan kata kunci!'); result.classList.remove('hidden'); result.innerHTML = skeletonCard(2); await new Promise(r => setTimeout(r, 300)); result.innerHTML = `<div class="bg-white/5 rounded-xl p-4 border border-white/10 text-center"><p class="text-xs text-zinc-300 mb-3">🔍 Cari "${q}" di Pinterest:</p><a href="https://pinterest.com/search/pins/?q=${encodeURIComponent(q)}" target="_blank" class="inline-block bg-white text-black font-bold rounded-lg px-6 py-2 text-xs">Buka Pinterest</a></div>`; }
 
-  // Sinkronisasi kalau session Supabase berubah (misal expired / login dari tab lain)
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user) {
-      await fetchAndSetUser(session.user);
-    } else if (event === 'SIGNED_OUT') {
+  // ═══════════════════════════════════════════════════════════
+  // SESSION RESTORE (background, tidak memblok tampilan)
+  // ═══════════════════════════════════════════════════════════
+  let _authReadyResolve;
+  const authReady = new Promise(r => { _authReadyResolve = r; });
+  let stockLoaded = false;
+  let stockPromise = Promise.resolve([]);
+
+  async function restoreSession() {
+    try {
+      const { data: { session } } = await supabaseClient.auth.getSession();   // baca dari localStorage, cepat
+      if (session && session.user) {
+        await fetchAndSetUser(session.user, { fast: true });                    // tanpa delay 500ms, tanpa alert
+      } else {
+        currentUser = null;
+        localStorage.removeItem('iyan_current');
+      }
+    } catch (e) {
+      console.error('Auth error:', e);
+    } finally {
+      _authReadyResolve();
+      // kalau datangnya telat (user sudah di dashboard) -> update UI di tempat
+      const dash = document.getElementById('dashboard');
+      if (dash && !dash.classList.contains('hidden')) {
+        applyUserChrome();
+        if (['profil', 'vercel', 'shop'].includes(currentTab)) switchTab(currentTab);
+      }
+    }
+  }
+
+  // Sinkronisasi kalau session Supabase berubah (login dari tab lain / expired)
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
       currentUser = null;
-      sessionStorage.removeItem('iyan_current');
+      localStorage.removeItem('iyan_current');
+      return;
+    }
+    if (event === 'SIGNED_IN' && session && session.user) {
+      if (currentUser && currentUser.id === session.user.id) return;            // sudah dimuat, abaikan (Supabase sering kirim SIGNED_IN lagi saat tab fokus)
+      setTimeout(() => fetchAndSetUser(session.user), 0);                       // jangan await di dalam callback (bisa deadlock)
     }
   });
 
-  // ── BOOTSTRAP ─────────────────────────────────────────────
-  (async () => {
-    // 1. Cek Sesi Supabase saat pertama kali buka
-    try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session) {
-            await fetchAndSetUser(session.user);
-            showDashboard();
-            autoPlayMusic(false);
-        } else {
-            document.getElementById('welcome-screen-1').classList.remove('hidden');
-            document.getElementById('dashboard').classList.add('hidden');
-        }
-    } catch(e) {
-        console.error("Auth error:", e);
-        document.getElementById('welcome-screen-1').classList.remove('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
+  // ═══════════════════════════════════════════════════════════
+  // ANIMASI: Lenis + GSAP/ScrollTrigger + Motion
+  // ═══════════════════════════════════════════════════════════
+  const LENIS_SYNC_TOUCH = false;   // true = smooth scroll juga di sentuhan layar (default false: momentum bawaan HP lebih halus & hemat baterai)
+  const CARD_SEL = '.wanz-card, .premium-product-card, .panel-box-item, .wanz-link-item';
+  let lenis = null;
+  let entryUntil = 0;
+  let _enhancing = false;
+
+  function initSmoothScroll() {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    const hasGsap = !!(window.gsap && window.ScrollTrigger);
+    if (hasGsap) {
+      gsap.registerPlugin(ScrollTrigger);
+      ScrollTrigger.defaults({ scroller: main });
+      ScrollTrigger.config({ ignoreMobileResize: true });
     }
+    if (!window.Lenis) return;
+    try {
+      lenis = new Lenis({
+        wrapper: main,
+        content: main,
+        duration: 1.15,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        syncTouch: LENIS_SYNC_TOUCH,
+        touchMultiplier: 1.2,
+        autoResize: true
+      });
+      main.classList.add('lenis', 'lenis-smooth');
+      if (hasGsap) {
+        lenis.on('scroll', ScrollTrigger.update);
+        gsap.ticker.add((time) => lenis.raf(time * 1000));
+        gsap.ticker.lagSmoothing(0);
+      } else {
+        const raf = (t) => { lenis.raf(t); requestAnimationFrame(raf); };
+        requestAnimationFrame(raf);
+      }
+    } catch (e) { console.warn('Lenis gagal:', e); lenis = null; }
+  }
 
-    // 2. Load Stock dari API
-    shopStock = await loadStockFromJSONBin();
+  // Pecah teks judul jadi per kata (struktur elemen anak tetap dipertahankan)
+  function splitWords(el) {
+    const words = [];
+    const walk = (node) => {
+      Array.from(node.childNodes).forEach(n => {
+        if (n.nodeType === 3) {
+          if (!n.textContent.trim()) return;
+          const holder = document.createElement('span');
+          holder.className = 'sw-line';
+          n.textContent.split(/(\s+)/).forEach(part => {
+            if (!part) return;
+            if (/^\s+$/.test(part)) { holder.appendChild(document.createTextNode(' ')); return; }
+            const o = document.createElement('span'); o.className = 'sw';
+            const i = document.createElement('span'); i.className = 'sw-i'; i.textContent = part;
+            o.appendChild(i); holder.appendChild(o); words.push(i);
+          });
+          n.replaceWith(holder);
+        } else if (n.nodeType === 1 && n.tagName.toLowerCase() !== 'svg') walk(n);
+      });
+    };
+    el.setAttribute('aria-label', el.textContent.replace(/\s+/g, ' ').trim());
+    walk(el);
+    return words;
+  }
 
-    // 3. Handle Resume Deploy
+  function bindMotionInteractions(el, M) {
+    let token = 0;
+    const toRest = (dur, ease) => {
+      const my = ++token;
+      try {
+        const a = M.animate(el, { transform: 'translateY(0px) scale(1)' }, { duration: dur, ease: ease || 'easeOut' });
+        Promise.resolve(a.finished || a).then(() => { if (my === token) el.style.transform = ''; }).catch(() => {});
+      } catch (e) { el.style.transform = ''; }
+    };
+    const to = (tf, dur) => { token++; try { M.animate(el, { transform: tf }, { duration: dur, ease: 'easeOut' }); } catch (e) {} };
+    if (typeof M.hover === 'function') {
+      M.hover(el, () => { to('translateY(-4px) scale(1.015)', 0.25); return () => toRest(0.3); });
+    }
+    const noPress = el.classList.contains('feature-item') || el.id === 'home-slider-container' || el.querySelector('input, textarea, select, #home-slider-track');
+    if (!noPress && typeof M.press === 'function') {
+      M.press(el, () => { to('scale(0.965)', 0.12); return () => toRest(0.4, [0.34, 1.56, 0.64, 1]); });
+    }
+  }
+
+  function enhance(main) {
+    if (!main || _enhancing) return;
+    _enhancing = true;
+    try {
+      const animateIn = performance.now() < entryUntil;
+
+      // 1) GSAP + ScrollTrigger: judul muncul per kata saat di-scroll
+      if (window.gsap && window.ScrollTrigger) {
+        const heads = Array.from(main.querySelectorAll('h2, h3, h4, [data-split]'))
+          .filter(h => !h.dataset.split && !h.closest('.feature-content, .skeleton-card, button, .hidden, [data-nosplit]') && h.offsetParent !== null)
+          .slice(0, 30);
+        heads.forEach(h => {
+          h.dataset.split = '1';
+          const words = splitWords(h);
+          if (!words.length || !animateIn) return;
+          gsap.set(words, { yPercent: 115, opacity: 0 });
+          gsap.to(words, {
+            yPercent: 0, opacity: 1, duration: 0.8, ease: 'power3.out', stagger: 0.07,
+            scrollTrigger: { trigger: h, scroller: main, start: 'top 92%', once: true }
+          });
+        });
+      }
+
+      // 2) Motion: card masuk + hover/press
+      const M = window.Motion;
+      if (M && typeof M.animate === 'function') {
+        let batch = 0;
+        requestAnimationFrame(() => { batch = 0; });
+        const cards = Array.from(main.querySelectorAll(CARD_SEL))
+          .filter(el => !el.dataset.m && !(el.parentElement && el.parentElement.closest(CARD_SEL)) && !el.closest('.hidden, .skeleton-card') && el.offsetParent !== null);
+        cards.forEach(el => {
+          el.dataset.m = '1';
+          el.classList.add('m-anim');
+          bindMotionInteractions(el, M);
+          if (!animateIn || typeof M.inView !== 'function') return;
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(28px) scale(0.97)';
+          let stop = null;
+          const reveal = () => {
+            const delay = Math.min(batch++, 6) * 0.07;
+            const done = () => { el.style.opacity = ''; el.style.transform = ''; };
+            try {
+              const a = M.animate(el,
+                { opacity: [0, 1], transform: ['translateY(28px) scale(0.97)', 'translateY(0px) scale(1)'] },
+                { duration: 0.7, delay, ease: [0.16, 1, 0.3, 1] });
+              Promise.resolve(a.finished || a).then(done).catch(done);
+            } catch (e) { done(); }
+            setTimeout(done, (delay + 0.7) * 1000 + 250);
+            if (typeof stop === 'function') stop();
+          };
+          stop = M.inView(el, () => { reveal(); }, { root: main, margin: '0px 0px -6% 0px', amount: 0.1 });
+        });
+      }
+
+      scheduleRefresh();
+    } catch (e) {
+      console.warn('enhance error:', e);
+    } finally {
+      // lepas flag setelah mutasi DOM milik kita sendiri selesai diproses observer
+      setTimeout(() => { _enhancing = false; }, 0);
+    }
+  }
+
+  let _refreshTimer = null;
+  function scheduleRefresh() {
+    clearTimeout(_refreshTimer);
+    _refreshTimer = setTimeout(() => {
+      if (lenis) { try { lenis.resize(); } catch (e) {} }
+      if (window.ScrollTrigger) ScrollTrigger.refresh();
+    }, 120);
+  }
+
+  function initEnhancer() {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    let raf = 0;
+    const mo = new MutationObserver(() => {
+      if (_enhancing) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => enhance(main));
+    });
+    mo.observe(main, { childList: true, subtree: true });
+    // tinggi konten berubah (accordion dll) -> update Lenis & ScrollTrigger
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => scheduleRefresh());
+      const watch = () => { ro.disconnect(); Array.from(main.children).forEach(c => ro.observe(c)); };
+      new MutationObserver(watch).observe(main, { childList: true });
+      watch();
+    }
+  }
+
+  // ── BOOTSTRAP ─────────────────────────────────────────────
+  (function boot() {
+    // Intro (welcome-screen-1) sudah tampil dari HTML -> animasi selalu jalan, tidak ada layar kosong.
+    initSmoothScroll();
+    initEnhancer();
+
+    // Pulihkan sesi + load stock PARALEL di background selama user melihat intro
+    restoreSession();
+    stockPromise = loadStockFromJSONBin().then(s => { shopStock = s; stockLoaded = true; return s; });
+
+    // Handle Resume Deploy
     const resumeRaw = localStorage.getItem('iyan_resume_deploy');
     if (resumeRaw) {
       setTimeout(() => {
-        if(confirm('Terdeteksi ada proses deploy yang terputus karena halaman di-refresh. Lanjutkan pemantauan (polling) sampai selesai?')) {
-           iyanDeployFiles = []; resumeIyanDeploy();
+        if (confirm('Terdeteksi ada proses deploy yang terputus karena halaman di-refresh. Lanjutkan pemantauan (polling) sampai selesai?')) {
+          iyanDeployFiles = []; resumeIyanDeploy();
         } else localStorage.removeItem('iyan_resume_deploy');
       }, 1000);
     }
