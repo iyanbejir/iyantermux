@@ -957,36 +957,41 @@
 
   // ── AUTH HELPER ──
 async function fetchAndSetUser(user) {
-    let { data: profile, error } = await supabaseClient.from('profiles').select('role, custom_id, vercel_limit, full_name, avatar, background').eq('id', user.id).maybeSingle();
-    
-    if (error) console.warn('[Profile] Fetch error:', error);
+  try {
+      // 1. Kasih jeda 0.5 detik biar token login bener-bener nempel ke Supabase
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-    if (!profile && !error) {
-        const newProfile = {
-            id: user.id,
-            full_name: user.user_metadata?.full_name || 'User',
-            role: 'user',
-            vercel_limit: 0
-        };
-        const { data: inserted, error: insErr } = await supabaseClient.from('profiles').upsert([newProfile], { onConflict: 'id', ignoreDuplicates: true }).select().maybeSingle();
-        if (insErr) console.error('[Profile] Insert gagal (Cek RLS):', insErr);
-        profile = inserted || newProfile;
-    }
-    if (!profile) {
-        profile = { role: 'user', vercel_limit: 0 };
-    }
+      // 2. Ambil data profil (pakai .single() biar kalau error langsung ketahuan)
+      let { data: profile, error } = await supabaseClient
+          .from('profiles')
+          .select('role, custom_id, vercel_limit, full_name, avatar, background')
+          .eq('id', user.id)
+          .single();
+      
+      if (error) {
+          console.error('[Profile] Gagal ambil dari database:', error);
+          alert("Gagal mengambil data profil. Error: " + error.message);
+          return; // Langsung stop, jangan lanjut kalau gagal
+      }
 
-    currentUser = normalizeUser({
-        id: user.id, 
-        customId: profile?.custom_id || 0, 
-        username: user.email, 
-        name: profile?.full_name || user.user_metadata?.full_name || "User",
-        role: profile?.role || "user", 
-        vercelLimit: profile?.vercel_limit || 0, 
-        avatar: profile?.avatar || null, 
-        background: profile?.background || null
-    });
-    sessionStorage.setItem('iyan_current', JSON.stringify(currentUser));
+      // 3. Cetak di console buat mastiin data dari DB dapet
+      console.log("Data dari DB:", profile);
+
+      currentUser = normalizeUser({
+          id: user.id, 
+          customId: profile.custom_id || 0, 
+          username: user.email, 
+          name: profile.full_name || user.user_metadata?.full_name || "User",
+          role: profile.role || "user", 
+          vercelLimit: profile.vercel_limit || 0, 
+          avatar: profile.avatar || null, 
+          background: profile.background || null
+      });
+      sessionStorage.setItem('iyan_current', JSON.stringify(currentUser));
+      
+  } catch (err) {
+      console.error("Error fatal di fetchAndSetUser:", err);
+  }
 }
 
   // ── LOGIN & REGISTER ──
