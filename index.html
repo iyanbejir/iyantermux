@@ -165,6 +165,17 @@
   .drop-zone.has-files { border-color: #4ade80; background: rgba(74, 222, 128, 0.05); }
   .account-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--card-border); background: rgba(255,255,255,0.06); cursor: pointer; user-select: none; transition: background-color 0.2s var(--ease-smooth), color 0.2s var(--ease-smooth), border-color 0.2s var(--ease-smooth), transform 0.2s var(--ease-smooth); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .account-chip.active { background: var(--btn-bg); color: var(--btn-text); border-color: transparent; }
+  .seg-switch { display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--card-border); }
+  .seg-switch.full { display: flex; width: 100%; }
+  .seg-btn { padding: 6px 12px; font-size: 11px; font-weight: 700; border-radius: 9px; color: var(--text-color); opacity: 0.6; background: transparent; white-space: nowrap; transition: background-color 0.2s var(--ease-smooth), color 0.2s var(--ease-smooth), opacity 0.2s var(--ease-smooth); }
+  .seg-switch.full .seg-btn { flex: 1; padding: 10px 12px; font-size: 13px; }
+  .seg-btn.active { background: var(--btn-bg); color: var(--btn-text); opacity: 1; }
+  .proj-item { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 10px; margin-bottom: 6px; }
+  .proj-item.paused { border-left: 3px solid #facc15; }
+  .proj-item.active-proj { border-left: 3px solid #4ade80; }
+  .proj-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+  .proj-badge.on { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .proj-badge.off { background: rgba(250,204,21,0.15); color: #facc15; }
   .deploy-result-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 10px; margin-bottom: 6px; flex-wrap: wrap; }
   .deploy-result-item.ok { border-left: 3px solid #4ade80; }
   .deploy-result-item.err { border-left: 3px solid #f87171; }
@@ -1372,7 +1383,7 @@ async function fetchAndSetUser(user) {
         <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
         </div>
-        <div><h2 class="text-xl font-extrabold text-white">FITUR IYAN</h2><p class="text-xs text-zinc-400">Informasi seputar layanan kami</p></div>
+        <div><h2 class="text-xl font-extrabold text-white">ALL TOOLS</h2><p class="text-xs text-zinc-400">Sedikit tools yang dapat digunakan</p></div>
       </div>
       <div class="space-y-4 mb-8">
         <div id="feat-am" class="wanz-card overflow-hidden feature-item">
@@ -1712,32 +1723,77 @@ async function fetchAndSetUser(user) {
     }
     return result;
   }
-  async function deployToVercelAccount(account, files, targetCount, onLog, isResume = false) {
-    const token = account.token; const results = [];
-    if (!token) return [{ status: 'err', error: 'Token kosong', account: account.name }];
-    let uploaded = []; let projectNameBase = (account.name || 'iyan').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (isResume) uploaded = files;
-    else {
+  // state UI deploy
+  let iyanTab = 'deploy';        // 'deploy' | 'cek'
+  let iyanMode = 'single';       // 'single' | 'auto'
+  let iyanAutoSel = null;        // Set index akun terpilih (mode auto)
+  let iyanStopFlag = false;
+  let cekProjectsList = [];
+  let cekAccSel = 'all';
+  let cekLoading = false;
+  let cekError = '';
+  let cekBusyAll = false;
+  const iyEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const iySleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isFatalDeployError = (msg) => /not authorized|invalid token|forbidden|unauthorized|credentials|24 hours|per-day|payment|blocked|suspended/i.test(msg || '');
+
+  async function deployToVercelAccount(account, files, targetCount, onLog, opts = {}) {
+    const token = account.token; const results = []; const auto = !!opts.auto;
+    if (!token) return [{ status: 'err', error: 'Token kosong', account: account.name, date: new Date().toLocaleString('id-ID') }];
+    const projectNameBase = (account.name || 'iyan').toLowerCase().replace(/[^a-z0-9]/g, '') || 'iyan';
+    const failResult = (msg) => ({ status: 'err', error: msg, account: account.name, date: new Date().toLocaleString('id-ID') });
+
+    // Upload file (auto: ulangi sampai 3x kalau gagal non-fatal)
+    let uploaded = [];
+    const maxUploadTry = auto ? 3 : 1;
+    for (let t = 1; t <= maxUploadTry; t++) {
       try {
+        uploaded = [];
         if (onLog) onLog(`Upload ${files.length} file ke ${account.name}...`);
-        for (let i = 0; i < files.length; i++) { const f = files[i]; const name = f._relativePath || f.name; if (onLog) onLog(`Upload ${i+1}/${files.length}: ${name}`); const up = await uploadVercelFile(f, token, name); uploaded.push(up); }
-      } catch (e) { return [{ status: 'err', error: e.message, account: account.name }]; }
+        for (let i = 0; i < files.length; i++) { const f = files[i]; const name = f._relativePath || f.name; if (onLog) onLog(`[${account.name}] Upload ${i+1}/${files.length}: ${name}`); uploaded.push(await uploadVercelFile(f, token, name)); }
+        break;
+      } catch (e) {
+        if (t >= maxUploadTry || isFatalDeployError(e.message) || iyanStopFlag) return [failResult(e.message)];
+        if (onLog) onLog(`[${account.name}] Upload gagal (${e.message}), coba lagi...`); await iySleep(3000);
+      }
     }
-    for (let i = 0; i < targetCount; i++) {
+
+    const deployOne = async (label) => {
+      const projectName = `${projectNameBase}-${Math.random().toString(36).slice(2, 6)}`;
+      if (onLog) onLog(`${label} Memulai deploy ${projectName}...`);
+      const dep = await createVercelDeployment(uploaded, projectName, token);
+      const savedState = { depId: dep.id, accountName: account.name, token: token };
+      localStorage.setItem('iyan_resume_deploy', JSON.stringify(savedState));
+      const final = await pollVercelDeployment(dep.id, token, (st) => { if (onLog) onLog(`${label} ${st}...`); }, savedState);
+      return { url: `https://${final.name}.vercel.app`, name: final.name };
+    };
+
+    if (!auto) {
+      for (let i = 0; i < targetCount; i++) {
+        const label = `[${account.name}] [${i+1}/${targetCount}]`;
+        try { const r = await deployOne(label); results.push({ url: r.url, status: 'ok', account: account.name, projectName: r.name, date: new Date().toLocaleString('id-ID') }); if (onLog) onLog(`${label} ✓ ${r.url}`); }
+        catch (e) { localStorage.removeItem('iyan_resume_deploy'); results.push(failResult(e.message)); if (onLog) onLog(`${label} ✗ ${e.message}`); }
+      }
+      return results;
+    }
+
+    // MODE AUTO: ulangi sampai jumlah project sukses = target
+    const MAX_FAIL_STREAK = 5; let okCount = 0, failStreak = 0;
+    while (okCount < targetCount) {
+      if (iyanStopFlag) { if (onLog) onLog(`[${account.name}] ⏹ Dihentikan (${okCount}/${targetCount})`); results.push(failResult(`Dihentikan manual (${okCount}/${targetCount} sukses)`)); break; }
+      const label = `[${account.name}] [${okCount+1}/${targetCount}]`;
       try {
-        let depId = null; let savedState = null; const resumeRaw = localStorage.getItem('iyan_resume_deploy');
-        if (resumeRaw && isResume) { const parsed = JSON.parse(resumeRaw); if (parsed.accountName === account.name && parsed.index === i) { depId = parsed.depId; savedState = parsed; if (onLog) onLog(`[${i+1}/${targetCount}] Melanjutkan...`); } }
-        if (!depId) {
-          const shortHash = Math.random().toString(36).slice(2, 6); const projectName = `${projectNameBase}-${shortHash}`;
-          if (onLog) onLog(`[${i+1}/${targetCount}] Memulai deploy ${projectName}...`);
-          const dep = await createVercelDeployment(uploaded, projectName, token); depId = dep.id;
-          savedState = { depId: depId, accountName: account.name, index: i, token: token }; localStorage.setItem('iyan_resume_deploy', JSON.stringify(savedState));
+        const r = await deployOne(label); okCount++; failStreak = 0;
+        results.push({ url: r.url, status: 'ok', account: account.name, projectName: r.name, date: new Date().toLocaleString('id-ID') });
+        if (onLog) onLog(`${label} ✓ ${r.url}`);
+      } catch (e) {
+        localStorage.removeItem('iyan_resume_deploy'); failStreak++;
+        if (onLog) onLog(`${label} ✗ ${e.message} (gagal ${failStreak}/${MAX_FAIL_STREAK})`);
+        if (isFatalDeployError(e.message) || failStreak >= MAX_FAIL_STREAK) {
+          results.push(failResult(`Berhenti di ${okCount}/${targetCount}: ${e.message}`)); if (onLog) onLog(`[${account.name}] ⛔ Tidak bisa lanjut: ${e.message}`); break;
         }
-        const final = await pollVercelDeployment(depId, token, (state) => { if (onLog) onLog(`[${i+1}/${targetCount}] ${state}...`); }, savedState);
-        const cleanUrl = `https://${final.name}.vercel.app`;
-        results.push({ url: cleanUrl, status: 'ok', account: account.name, projectName: final.name, date: new Date().toLocaleString('id-ID') });
-        if (onLog) onLog(`[${i+1}/${targetCount}] ✓ ${cleanUrl}`);
-      } catch(e) { localStorage.removeItem('iyan_resume_deploy'); results.push({ status: 'err', error: e.message, account: account.name, date: new Date().toLocaleString('id-ID') }); if (onLog) onLog(`[${i+1}/${targetCount}] ✗ ${e.message}`); }
+        await iySleep(3000);
+      }
     }
     return results;
   }
@@ -1789,58 +1845,45 @@ async function fetchAndSetUser(user) {
           <input type="file" id="iyan-folder-input" class="hidden" webkitdirectory multiple onchange="handleIyanFiles(this.files)">
         </div>`;
     }
-    container.innerHTML = `
-      <div class="flex items-center justify-between mb-6 mt-2">
-        <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon></svg></div>
-          <div><h2 class="text-xl font-extrabold text-white">Iyan Deploy</h2><p class="text-xs text-zinc-400">Auto deploy ke Vercel</p></div>
+    if (!iyanAutoSel) iyanAutoSel = new Set(vercelAccounts.map((_, i) => i));
+    iyanAutoSel = new Set(Array.from(iyanAutoSel).filter(i => i < vercelAccounts.length));
+    const tabsHTML = `
+      <div class="seg-switch full mb-4">
+        <button onclick="setIyanTab('deploy')" class="seg-btn ${iyanTab === 'deploy' ? 'active' : ''}">🚀 Deploy</button>
+        <button onclick="setIyanTab('cek')" class="seg-btn ${iyanTab === 'cek' ? 'active' : ''}">🔍 Cek Project</button>
+      </div>`;
+    const accOptions = vercelAccounts.map((acc, i) => `<option value="${i}">${iyEsc(acc.name)}</option>`).join('');
+    const modeBody = iyanMode === 'single' ? `
+        <p class="text-[11px] text-zinc-400 mb-3">Deploy <b>1 project</b> ke 1 akun.</p>
+        <select id="iyan-account-select" class="w-full bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 mb-3">${accOptions}</select>
+        <button id="iyan-deploy-btn" onclick="startIyanDeploy()" class="w-full btn-primary font-bold rounded-xl py-3 text-sm">🚀 Deploy</button>
+      ` : `
+        <p class="text-[11px] text-zinc-400 mb-3">Deploy <b>2 project atau lebih</b>. Otomatis mengulang sampai target tercapai. Pilih akun (bisa lebih dari 1, jalan paralel):</p>
+        <div class="flex flex-wrap gap-2 mb-3" id="multi-account-list">
+          ${vercelAccounts.length === 0 ? '<span class="text-xs text-zinc-400">Belum ada akun.</span>' : vercelAccounts.map((acc, i) => `<span class="account-chip ${iyanAutoSel.has(i) ? 'active' : ''}" data-index="${i}" onclick="toggleAutoAcc(${i}, this)">${iyEsc(acc.name)}</span>`).join('')}
         </div>
-        <span class="text-[10px] font-bold bg-white/10 text-white px-3 py-1 rounded-md border border-white/20">AKUN: ${count} / ${limit}</span>
-      </div>
-      ${resumeBanner}
-      <div class="wanz-card p-4 mb-4">
-        <h4 class="text-sm font-bold text-white mb-3">🔑 Akun Vercel</h4>
-        <div class="space-y-2 mb-3">
-          ${vercelAccounts.length === 0 ? `<p class="text-xs text-zinc-400">Belum ada akun. Tambah di bawah.</p>` : ''}
-          ${vercelAccounts.map((acc, i) => `
-            <div class="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2 border border-white/10">
-              <div class="min-w-0 flex-1"><p class="font-bold text-sm text-white truncate">${acc.name}</p><p class="text-[10px] text-zinc-400 font-mono truncate">Token: ••••••••${acc.token ? acc.token.slice(-4) : ''}</p></div>
-              <button onclick="removeVercelAccount(${i})" class="text-red-400 text-[10px] font-bold px-2 py-1 bg-red-500/10 rounded border border-red-500/20 ml-2">Hapus</button>
-            </div>`).join('')}
-        </div>
-        ${!isFull ? `
-          <div class="flex flex-col gap-2">
-            <input type="text" id="vc-name" placeholder="Nama Akun (contoh: iyan-1)" class="w-full bg-input rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 border border-white/10">
-            <input type="password" id="vc-token" placeholder="Vercel Token (https://vercel.com/account/tokens)" class="w-full bg-input rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 border border-white/10">
-            <button onclick="addVercelAccount()" class="btn-primary font-bold rounded-lg px-4 py-2 text-xs">+ Tambah Akun</button>
-          </div>` : `<p class="text-xs text-zinc-400 text-center">Limit akun tercapai.</p>`}
-      </div>
-      <div class="wanz-card p-4 mb-4"><h4 class="text-sm font-bold text-white mb-3">📦 Source Project</h4>${fileBoxHTML}</div>
-      <div class="wanz-card p-4 mb-4">
-        <h4 class="text-sm font-bold text-white mb-3">🚀 Deploy (Single Akun)</h4>
-        <select id="iyan-account-select" class="w-full bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 mb-3">
-          ${vercelAccounts.map((acc, i) => `<option value="${i}">${acc.name}</option>`).join('')}
-        </select>
         <div class="flex items-center gap-2 mb-3">
-          <label class="text-xs text-zinc-400 whitespace-nowrap">Target deploy:</label>
-          <input type="number" id="iyan-target" value="1" min="1" max="10" class="w-20 bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 text-center">
+          <label class="text-xs text-zinc-400 whitespace-nowrap">Target per akun:</label>
+          <input type="number" id="multi-target" value="2" min="2" max="10" class="w-20 bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 text-center">
           <span class="text-xs text-zinc-400">project</span>
         </div>
-        <button id="iyan-deploy-btn" onclick="startIyanDeploy()" class="w-full btn-primary font-bold rounded-xl py-3 text-sm">⚡ Auto Deploy</button>
-        <div id="iyan-status" class="hidden mt-3"></div>
-      </div>
+        <div class="flex gap-2">
+          <button id="multi-deploy-btn" onclick="startAutoDeploy()" class="flex-1 btn-primary font-bold rounded-xl py-3 text-sm">⚡ Auto Deploy</button>
+          <button id="iyan-stop-btn" onclick="stopIyanDeploy()" class="hidden bg-red-500/10 text-red-400 border border-red-500/20 font-bold rounded-xl px-4 text-sm">⏹ Stop</button>
+        </div>
+      `;
+    const deployHTML = `
+      <div class="wanz-card p-4 mb-4"><h4 class="text-sm font-bold text-white mb-3">📦 Source Project</h4>${fileBoxHTML}</div>
       <div class="wanz-card p-4 mb-4">
-        <h4 class="text-sm font-bold text-white mb-3">⚡ Multi Deploy (Parallel)</h4>
-        <p class="text-[11px] text-zinc-400 mb-3">Deploy source yang sama ke beberapa akun sekaligus. Semua jalan paralel.</p>
-        <div class="flex flex-wrap gap-2 mb-3" id="multi-account-list">
-          ${vercelAccounts.map((acc, i) => `<span class="account-chip" data-index="${i}" onclick="this.classList.toggle('active')">${acc.name}</span>`).join('')}
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <h4 class="text-sm font-bold text-white">🚀 Deploy</h4>
+          <div class="seg-switch">
+            <button onclick="setIyanMode('single')" class="seg-btn ${iyanMode === 'single' ? 'active' : ''}">Deploy</button>
+            <button onclick="setIyanMode('auto')" class="seg-btn ${iyanMode === 'auto' ? 'active' : ''}">Auto Deploy</button>
+          </div>
         </div>
-        <div class="flex items-center gap-2 mb-3">
-          <label class="text-xs text-zinc-400">Target per akun:</label>
-          <input type="number" id="multi-target" value="1" min="1" max="5" class="w-20 bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 text-center">
-        </div>
-        <button id="multi-deploy-btn" onclick="startMultiIyanDeploy()" class="w-full btn-primary font-bold rounded-xl py-3 text-sm">⚡ Auto Multi Deploy</button>
-        <div id="multi-status" class="hidden mt-3"></div>
+        ${modeBody}
+        <div id="iyan-status" class="hidden mt-3"></div>
       </div>
       <div class="wanz-card p-4 mb-4">
         <div class="flex items-center justify-between mb-3">
@@ -1862,6 +1905,57 @@ async function fetchAndSetUser(user) {
         </div>
       </div>
     `;
+    const cekAccOptions = vercelAccounts.length === 0 ? '' : `<option value="all" ${cekAccSel === 'all' ? 'selected' : ''}>Semua Akun (${vercelAccounts.length})</option>` + vercelAccounts.map((acc, i) => `<option value="${i}" ${String(cekAccSel) === String(i) ? 'selected' : ''}>${iyEsc(acc.name)}</option>`).join('');
+    const cekHTML = `
+      <div class="wanz-card p-4 mb-4">
+        <h4 class="text-sm font-bold text-white mb-1">🔍 Cek Project</h4>
+        <p class="text-[11px] text-zinc-400 mb-3">Pilih akun yang sudah ditambahkan di atas, lalu cek semua project yang ada di Vercel.</p>
+        ${vercelAccounts.length === 0 ? '<p class="text-xs text-yellow-400">Tambah akun Vercel dulu di atas.</p>' : `
+        <select id="cek-account-select" onchange="cekAccSel = this.value" class="w-full bg-input rounded-lg px-3 py-2 text-sm text-white border border-white/10 mb-3">${cekAccOptions}</select>
+        <button id="cek-btn" onclick="cekProjects()" class="w-full btn-primary font-bold rounded-xl py-3 text-sm">🔍 Cek Project</button>`}
+      </div>
+      <div class="wanz-card p-4 mb-4">
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <h4 class="text-sm font-bold text-white" id="cek-title">📂 Project (${cekProjectsList.length})</h4>
+          <div class="flex gap-1">
+            <button onclick="bulkProjects('pause')" class="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-1 rounded font-semibold">⏸ Jeda Semua</button>
+            <button onclick="bulkProjects('unpause')" class="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded font-semibold">▶ Play Semua</button>
+          </div>
+        </div>
+        <div id="cek-results" class="max-h-[28rem] overflow-y-auto hide-scroll"></div>
+      </div>
+    `;
+    const _afterRender = () => renderCekResults();
+    container.innerHTML = `
+      <div class="flex items-center justify-between mb-6 mt-2">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon></svg></div>
+          <div><h2 class="text-xl font-extrabold text-white">Iyan Deploy</h2><p class="text-xs text-zinc-400">Auto deploy ke Vercel</p></div>
+        </div>
+        <span class="text-[10px] font-bold bg-white/10 text-white px-3 py-1 rounded-md border border-white/20">AKUN: ${count} / ${limit}</span>
+      </div>
+      ${resumeBanner}
+      ${tabsHTML}
+      <div class="wanz-card p-4 mb-4">
+        <h4 class="text-sm font-bold text-white mb-3">🔑 Akun Vercel</h4>
+        <div class="space-y-2 mb-3">
+          ${vercelAccounts.length === 0 ? `<p class="text-xs text-zinc-400">Belum ada akun. Tambah di bawah.</p>` : ''}
+          ${vercelAccounts.map((acc, i) => `
+            <div class="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+              <div class="min-w-0 flex-1"><p class="font-bold text-sm text-white truncate">${acc.name}</p><p class="text-[10px] text-zinc-400 font-mono truncate">Token: ••••••••${acc.token ? acc.token.slice(-4) : ''}</p></div>
+              <button onclick="removeVercelAccount(${i})" class="text-red-400 text-[10px] font-bold px-2 py-1 bg-red-500/10 rounded border border-red-500/20 ml-2">Hapus</button>
+            </div>`).join('')}
+        </div>
+        ${!isFull ? `
+          <div class="flex flex-col gap-2">
+            <input type="text" id="vc-name" placeholder="Nama Akun (contoh: iyan-1)" class="w-full bg-input rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 border border-white/10">
+            <input type="password" id="vc-token" placeholder="Vercel Token (https://vercel.com/account/tokens)" class="w-full bg-input rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 border border-white/10">
+            <button onclick="addVercelAccount()" class="btn-primary font-bold rounded-lg px-4 py-2 text-xs">+ Tambah Akun</button>
+          </div>` : `<p class="text-xs text-zinc-400 text-center">Limit akun tercapai.</p>`}
+      </div>
+      ${iyanTab === 'cek' ? cekHTML : deployHTML}
+    `;
+    _afterRender();
   }
   function resetIyanFiles() { iyanDeployFiles = []; renderIyanDeploy(document.getElementById('main-content')); }
   function removeVercelAccount(index) { if (!confirm('Hapus akun ini?')) return; vercelAccounts.splice(index, 1); saveVercel(); switchTab('vercel'); }
@@ -1873,49 +1967,179 @@ async function fetchAndSetUser(user) {
     catch(e) { if (dropText) dropText.innerHTML = `<p class="text-sm font-bold text-red-400 mb-1">✗ ${e.message}</p><p class="text-[11px] text-zinc-400">Coba lagi</p>`; iyanDeployFiles = []; }
   }
   function handleIyanDrop(event) { event.preventDefault(); const dt = event.dataTransfer; if (!dt || !dt.files) return; handleIyanFiles(dt.files); }
-  async function startIyanDeploy(isResume = false) {
-    if (iyanDeployInProgress) return alert('Deploy sedang berjalan...');
-    if (!vercelAccounts.length) return alert('Tambah akun Vercel dulu!');
-    let filesToDeploy = iyanDeployFiles;
-    if (filesToDeploy.length === 0) { const resumeRaw = localStorage.getItem('iyan_resume_deploy'); if (!resumeRaw) return alert('Pilih file/folder/.zip dulu!'); filesToDeploy = []; }
-    const accIndex = parseInt(document.getElementById('iyan-account-select').value); const account = vercelAccounts[accIndex];
-    const target = Math.max(1, parseInt(document.getElementById('iyan-target').value) || 1);
-    if (!account) return alert('Akun tidak valid.');
-    const statusEl = document.getElementById('iyan-status'); const btn = document.getElementById('iyan-deploy-btn');
-    iyanDeployInProgress = true; if (btn) { btn.disabled = true; btn.textContent = '⏳ Deploying...'; }
-    statusEl.classList.remove('hidden'); statusEl.innerHTML = `<div class="bg-white/5 border border-white/10 rounded-xl p-3"><p class="text-xs font-semibold text-yellow-400 mb-2">⏳ Memproses deploy...</p><div class="deploy-progress-bar"><div id="iyan-progress" style="width: 5%"></div></div><div id="iyan-log" class="text-[10px] text-zinc-400 mt-2 font-mono max-h-32 overflow-y-auto hide-scroll space-y-0.5"></div></div>`;
-    const logEl = document.getElementById('iyan-log'); const progEl = document.getElementById('iyan-progress'); const logs = [];
-    const onLog = (msg) => { logs.push(msg); if (logEl) logEl.innerHTML = logs.map(m => `<div>${m}</div>`).join(''); if (progEl) progEl.style.width = Math.min(95, 5 + logs.length * 5) + '%'; };
-    try {
-      const results = await deployToVercelAccount(account, filesToDeploy, target, onLog, isResume);
-      const saved = JSON.parse(localStorage.getItem('iyan_deploy_results') || '[]'); saved.push(...results); localStorage.setItem('iyan_deploy_results', JSON.stringify(saved.slice(-100)));
-      if (progEl) progEl.style.width = '100%'; const ok = results.filter(r => r.status === 'ok').length;
-      statusEl.innerHTML = `<div class="bg-white/5 border ${ok > 0 ? 'border-green-500/30' : 'border-red-500/30'} rounded-xl p-3"><p class="text-xs font-semibold ${ok > 0 ? 'text-green-400' : 'text-red-400'} mb-2">${ok > 0 ? '✅' : '❌'} ${ok}/${results.length} deploy berhasil</p><div class="space-y-1">${results.map(r => r.status === 'ok' ? `<div class="text-[10px] font-mono"><a href="${r.url}" target="_blank" class="text-blue-300">${r.url}</a></div>` : `<div class="text-[10px] text-red-400">✗ ${r.error}</div>`).join('')}</div></div>`;
-      setTimeout(() => { switchTab('vercel'); }, 1500);
-    } catch(e) { statusEl.innerHTML = `<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-xs text-red-400">❌ ${e.message}</div>`; }
-    finally { iyanDeployInProgress = false; if (btn) { btn.disabled = false; btn.textContent = '⚡ Auto Deploy'; } }
+  // ── Navigasi tab / mode ──
+  function rerenderDeploy() { renderIyanDeploy(document.getElementById('main-content')); }
+  function setIyanTab(t) { if (iyanDeployInProgress) return alert('Deploy sedang berjalan...'); iyanTab = t; rerenderDeploy(); }
+  function setIyanMode(m) { if (iyanDeployInProgress) return alert('Deploy sedang berjalan...'); iyanMode = m; rerenderDeploy(); }
+  function toggleAutoAcc(i, el) { if (iyanAutoSel.has(i)) iyanAutoSel.delete(i); else iyanAutoSel.add(i); el.classList.toggle('active'); }
+  function stopIyanDeploy() { iyanStopFlag = true; const b = document.getElementById('iyan-stop-btn'); if (b) { b.disabled = true; b.textContent = 'Menghentikan...'; } }
+
+  // ── UI status progress (dipakai single, auto, resume) ──
+  function createIyanStatusUI(title, logStep) {
+    const statusEl = document.getElementById('iyan-status'); const logs = [];
+    if (!statusEl) return { onLog: () => {}, finish: () => {}, fail: () => {} };
+    statusEl.classList.remove('hidden');
+    statusEl.innerHTML = `<div class="bg-white/5 border border-white/10 rounded-xl p-3"><p class="text-xs font-semibold text-yellow-400 mb-2">⏳ ${title}</p><div class="deploy-progress-bar"><div id="iyan-progress" style="width: 5%"></div></div><div id="iyan-log" class="text-[10px] text-zinc-400 mt-2 font-mono max-h-32 overflow-y-auto hide-scroll space-y-0.5"></div></div>`;
+    const logEl = document.getElementById('iyan-log'); const progEl = document.getElementById('iyan-progress');
+    return {
+      onLog: (msg) => { logs.push(`[${new Date().toLocaleTimeString('id-ID')}] ${msg}`); if (logEl) { logEl.innerHTML = logs.map(m => `<div>${m}</div>`).join(''); logEl.scrollTop = logEl.scrollHeight; } if (progEl) progEl.style.width = Math.min(95, 5 + logs.length * logStep) + '%'; },
+      finish: (results) => {
+        if (progEl) progEl.style.width = '100%'; const ok = results.filter(r => r.status === 'ok').length; const total = results.length;
+        statusEl.innerHTML = `<div class="bg-white/5 border ${ok > 0 ? 'border-green-500/30' : 'border-red-500/30'} rounded-xl p-3"><p class="text-xs font-semibold ${ok > 0 ? 'text-green-400' : 'text-red-400'} mb-2">${ok > 0 ? '✅' : '❌'} ${ok}/${total} deploy berhasil</p><div class="space-y-1">${results.map(r => r.status === 'ok' ? `<div class="text-[10px] font-mono"><a href="${r.url}" target="_blank" class="text-blue-300">${r.url}</a></div>` : `<div class="text-[10px] text-red-400">✗ [${iyEsc(r.account)}] ${iyEsc(r.error)}</div>`).join('')}</div></div>`;
+      },
+      fail: (e) => { statusEl.innerHTML = `<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-xs text-red-400">❌ ${iyEsc(e.message)}</div>`; }
+    };
   }
-  async function startMultiIyanDeploy(isResume = false) {
+  function saveDeployResults(results) { const saved = JSON.parse(localStorage.getItem('iyan_deploy_results') || '[]'); saved.push(...results); localStorage.setItem('iyan_deploy_results', JSON.stringify(saved.slice(-100))); }
+
+  // ── Mode DEPLOY: 1 project, 1 akun ──
+  async function startIyanDeploy() {
     if (iyanDeployInProgress) return alert('Deploy sedang berjalan...');
     if (!vercelAccounts.length) return alert('Tambah akun Vercel dulu!');
-    let filesToDeploy = iyanDeployFiles;
-    if (filesToDeploy.length === 0) { const resumeRaw = localStorage.getItem('iyan_resume_deploy'); if (!resumeRaw) return alert('Pilih file/folder/.zip dulu!'); filesToDeploy = []; }
-    const selected = Array.from(document.querySelectorAll('#multi-account-list .account-chip.active')).map(el => vercelAccounts[parseInt(el.dataset.index)]).filter(Boolean);
-    if (selected.length === 0) return alert('Pilih minimal 1 akun!');
-    const target = Math.max(1, parseInt(document.getElementById('multi-target').value) || 1);
-    const statusEl = document.getElementById('multi-status'); const btn = document.getElementById('multi-deploy-btn');
-    iyanDeployInProgress = true; if (btn) { btn.disabled = true; btn.textContent = '⏳ Multi Deploying...'; }
-    statusEl.classList.remove('hidden'); statusEl.innerHTML = `<div class="bg-white/5 border border-white/10 rounded-xl p-3"><p class="text-xs font-semibold text-yellow-400 mb-2">⏳ Multi deploy ke ${selected.length} akun...</p><div class="deploy-progress-bar"><div id="multi-progress" style="width: 5%"></div></div><div id="multi-log" class="text-[10px] text-zinc-400 mt-2 font-mono max-h-32 overflow-y-auto hide-scroll space-y-0.5"></div></div>`;
-    const logEl = document.getElementById('multi-log'); const progEl = document.getElementById('multi-progress'); const logs = [];
-    const onLog = (msg) => { logs.push(`[${new Date().toLocaleTimeString('id-ID')}] ${msg}`); if (logEl) logEl.innerHTML = logs.map(m => `<div>${m}</div>`).join(''); if (progEl) progEl.style.width = Math.min(95, 5 + logs.length * 2) + '%'; };
+    if (iyanDeployFiles.length === 0) return alert('Pilih file/folder/.zip dulu!');
+    const account = vercelAccounts[parseInt(document.getElementById('iyan-account-select').value)];
+    if (!account) return alert('Akun tidak valid.');
+    const btn = document.getElementById('iyan-deploy-btn');
+    iyanDeployInProgress = true; iyanStopFlag = false; if (btn) { btn.disabled = true; btn.textContent = '⏳ Deploying...'; }
+    const ui = createIyanStatusUI('Memproses deploy...', 5);
     try {
-      const promises = selected.map(acc => deployToVercelAccount(acc, filesToDeploy, target, onLog, isResume)); const allResults = (await Promise.all(promises)).flat();
-      const saved = JSON.parse(localStorage.getItem('iyan_deploy_results') || '[]'); saved.push(...allResults); localStorage.setItem('iyan_deploy_results', JSON.stringify(saved.slice(-100)));
-      if (progEl) progEl.style.width = '100%'; const ok = allResults.filter(r => r.status === 'ok').length;
-      statusEl.innerHTML = `<div class="bg-white/5 border ${ok > 0 ? 'border-green-500/30' : 'border-red-500/30'} rounded-xl p-3"><p class="text-xs font-semibold ${ok > 0 ? 'text-green-400' : 'text-red-400'} mb-2">${ok > 0 ? '✅' : '❌'} ${ok}/${allResults.length} deploy berhasil</p><div class="space-y-1">${allResults.map(r => r.status === 'ok' ? `<div class="text-[10px] font-mono"><a href="${r.url}" target="_blank" class="text-blue-300">${r.url}</a></div>` : `<div class="text-[10px] text-red-400">✗ [${r.account}] ${r.error}</div>`).join('')}</div></div>`;
-      setTimeout(() => { switchTab('vercel'); }, 2000);
-    } catch(e) { statusEl.innerHTML = `<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-xs text-red-400">❌ ${e.message}</div>`; }
-    finally { iyanDeployInProgress = false; if (btn) { btn.disabled = false; btn.textContent = '⚡ Auto Multi Deploy'; } }
+      const results = await deployToVercelAccount(account, iyanDeployFiles, 1, ui.onLog, { auto: false });
+      saveDeployResults(results); ui.finish(results);
+      setTimeout(() => { if (iyanTab === 'deploy') rerenderDeploy(); }, 2500);
+    } catch (e) { ui.fail(e); }
+    finally { iyanDeployInProgress = false; if (btn) { btn.disabled = false; btn.textContent = '🚀 Deploy'; } }
+  }
+
+  // ── Mode AUTO DEPLOY: 2+ project, ulang sampai target tercapai ──
+  async function startAutoDeploy() {
+    if (iyanDeployInProgress) return alert('Deploy sedang berjalan...');
+    if (!vercelAccounts.length) return alert('Tambah akun Vercel dulu!');
+    if (iyanDeployFiles.length === 0) return alert('Pilih file/folder/.zip dulu!');
+    const selected = Array.from(iyanAutoSel).map(i => vercelAccounts[i]).filter(Boolean);
+    if (selected.length === 0) return alert('Pilih minimal 1 akun!');
+    const target = Math.max(2, parseInt(document.getElementById('multi-target').value) || 2);
+    const btn = document.getElementById('multi-deploy-btn'); const stopBtn = document.getElementById('iyan-stop-btn');
+    iyanDeployInProgress = true; iyanStopFlag = false;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Auto Deploying...'; } if (stopBtn) stopBtn.classList.remove('hidden');
+    const ui = createIyanStatusUI(`Auto deploy: target ${target} project × ${selected.length} akun...`, 2);
+    try {
+      const allResults = (await Promise.all(selected.map(acc => deployToVercelAccount(acc, iyanDeployFiles, target, ui.onLog, { auto: true })))).flat();
+      saveDeployResults(allResults); ui.finish(allResults);
+      setTimeout(() => { if (iyanTab === 'deploy') rerenderDeploy(); }, 3000);
+    } catch (e) { ui.fail(e); }
+    finally { iyanDeployInProgress = false; iyanStopFlag = false; if (btn) { btn.disabled = false; btn.textContent = '⚡ Auto Deploy'; } if (stopBtn) stopBtn.classList.add('hidden'); }
+  }
+
+  // ── Lanjutkan pemantauan deploy yang terputus (refresh halaman) ──
+  async function resumeIyanDeploy() {
+    const raw = localStorage.getItem('iyan_resume_deploy'); if (!raw) return;
+    let st; try { st = JSON.parse(raw); } catch (e) { localStorage.removeItem('iyan_resume_deploy'); return; }
+    iyanTab = 'deploy'; switchTab('vercel');
+    await iySleep(300);
+    iyanDeployInProgress = true;
+    const ui = createIyanStatusUI('Melanjutkan pemantauan deploy...', 5);
+    try {
+      const final = await pollVercelDeployment(st.depId, st.token, (s) => ui.onLog(`${s}...`), st);
+      const res = [{ url: `https://${final.name}.vercel.app`, status: 'ok', account: st.accountName, projectName: final.name, date: new Date().toLocaleString('id-ID') }];
+      saveDeployResults(res); ui.finish(res);
+    } catch (e) { ui.fail(e); }
+    finally { iyanDeployInProgress = false; }
+  }
+
+  // ═══════ CEK PROJECT ═══════
+  async function vercelReq(method, path, token) {
+    const res = await fetch(`${VERCEL_API}${path}`, { method, headers: { 'Authorization': `Bearer ${token}` } });
+    const txt = await res.text(); let data = {}; try { data = txt ? JSON.parse(txt) : {}; } catch (e) {}
+    if (!res.ok) throw new Error((data.error && data.error.message) || `HTTP ${res.status}`);
+    return data;
+  }
+  async function fetchAccountProjects(account) {
+    const token = account.token; const out = []; let okScopes = 0; let lastErr = null;
+    const scopes = [{ teamId: null, label: '' }];
+    try { const t = await vercelReq('GET', '/v2/teams?limit=100', token); (t.teams || []).forEach(tm => scopes.push({ teamId: tm.id, label: tm.name || tm.slug || '' })); } catch (e) {}
+    for (const sc of scopes) {
+      try {
+        let until = null;
+        for (let page = 0; page < 20; page++) {
+          const q = `/v9/projects?limit=100${sc.teamId ? '&teamId=' + encodeURIComponent(sc.teamId) : ''}${until ? '&until=' + until : ''}`;
+          const data = await vercelReq('GET', q, token);
+          (data.projects || []).forEach(p => {
+            const alias = p.targets && p.targets.production && Array.isArray(p.targets.production.alias) ? p.targets.production.alias.find(a => /\.vercel\.app$/.test(a)) : null;
+            out.push({ id: p.id, name: p.name, paused: !!p.paused, url: `https://${alias || p.name + '.vercel.app'}`, createdAt: p.createdAt, teamId: sc.teamId, scope: sc.label, accountName: account.name, token: token, busy: false });
+          });
+          if (data.pagination && data.pagination.next) until = data.pagination.next; else break;
+        }
+        okScopes++;
+      } catch (e) { lastErr = e; }
+    }
+    if (okScopes === 0) throw lastErr || new Error('Gagal mengambil project');
+    return out;
+  }
+  async function cekProjects() {
+    if (cekLoading) return; if (!vercelAccounts.length) return alert('Tambah akun Vercel dulu!');
+    const sel = document.getElementById('cek-account-select'); cekAccSel = sel ? sel.value : 'all';
+    const accs = cekAccSel === 'all' ? vercelAccounts : [vercelAccounts[parseInt(cekAccSel)]].filter(Boolean);
+    if (!accs.length) return alert('Akun tidak valid.');
+    cekLoading = true; cekError = ''; cekProjectsList = []; renderCekResults();
+    const btn = document.getElementById('cek-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Mengecek...'; }
+    const errs = [];
+    for (const acc of accs) {
+      try { cekProjectsList.push(...await fetchAccountProjects(acc)); }
+      catch (e) { errs.push(`[${acc.name}] ${e.message}`); }
+      renderCekResults();
+    }
+    cekError = errs.join('\n'); cekLoading = false; renderCekResults();
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Cek Project'; }
+  }
+  function renderCekResults() {
+    const box = document.getElementById('cek-results'); if (!box) return;
+    const title = document.getElementById('cek-title'); if (title) title.textContent = `📂 Project (${cekProjectsList.length})`;
+    let html = '';
+    if (cekLoading) html += `<p class="text-xs text-yellow-400 text-center py-3">⏳ Mengambil data project...</p>`;
+    if (cekError) html += `<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-2 text-[11px] text-red-400 whitespace-pre-line">❌ ${iyEsc(cekError)}</div>`;
+    if (!cekLoading && !cekError && cekProjectsList.length === 0) html += `<p class="text-xs text-zinc-400 text-center py-4">Belum ada data. Pilih akun lalu tekan "Cek Project".</p>`;
+    html += cekProjectsList.map((p, i) => `
+      <div class="proj-item ${p.paused ? 'paused' : 'active-proj'}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-white truncate">${iyEsc(p.name)}</p>
+            <a href="${iyEsc(p.url)}" target="_blank" class="text-[10px] font-mono text-blue-300 break-all">${iyEsc(p.url)}</a>
+            <p class="text-[10px] text-zinc-400 mt-0.5">${iyEsc(p.accountName)}${p.scope ? ' · team: ' + iyEsc(p.scope) : ''}${p.createdAt ? ' · ' + new Date(p.createdAt).toLocaleDateString('id-ID') : ''}</p>
+          </div>
+          <span class="proj-badge ${p.paused ? 'off' : 'on'}">${p.paused ? '⏸ JEDA' : '▶ AKTIF'}</span>
+        </div>
+        <div class="flex gap-2">
+          <button ${p.busy ? 'disabled' : ''} onclick="projectAction(${i}, '${p.paused ? 'unpause' : 'pause'}')" class="flex-1 text-[11px] font-bold py-1.5 rounded-lg ${p.paused ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}">${p.busy ? '⏳ ...' : (p.paused ? '▶ Play' : '⏸ Jeda')}</button>
+          <button ${p.busy ? 'disabled' : ''} onclick="projectAction(${i}, 'delete')" class="flex-1 text-[11px] font-bold py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">🗑️ Hapus</button>
+        </div>
+      </div>`).join('');
+    box.innerHTML = html;
+  }
+  async function runProjectAction(p, action) {
+    const team = p.teamId ? `?teamId=${encodeURIComponent(p.teamId)}` : '';
+    if (action === 'pause') { await vercelReq('POST', `/v1/projects/${encodeURIComponent(p.id)}/pause${team}`, p.token); p.paused = true; }
+    else if (action === 'unpause') { await vercelReq('POST', `/v1/projects/${encodeURIComponent(p.id)}/unpause${team}`, p.token); p.paused = false; }
+    else if (action === 'delete') { await vercelReq('DELETE', `/v9/projects/${encodeURIComponent(p.id)}${team}`, p.token); }
+  }
+  async function projectAction(idx, action) {
+    const p = cekProjectsList[idx]; if (!p || p.busy || cekBusyAll) return;
+    if (action === 'delete' && !confirm(`Hapus project "${p.name}" permanen? Tidak bisa dibatalkan.`)) return;
+    p.busy = true; renderCekResults();
+    try { await runProjectAction(p, action); if (action === 'delete') cekProjectsList.splice(cekProjectsList.indexOf(p), 1); }
+    catch (e) { alert(`Gagal (${p.name}): ${e.message}`); }
+    p.busy = false; renderCekResults();
+  }
+  async function bulkProjects(action) {
+    if (cekBusyAll) return;
+    const targets = cekProjectsList.filter(p => action === 'pause' ? !p.paused : p.paused);
+    if (targets.length === 0) return alert(action === 'pause' ? 'Tidak ada project aktif untuk dijeda.' : 'Tidak ada project yang sedang dijeda.');
+    if (!confirm(`${action === 'pause' ? 'Jeda' : 'Play'} ${targets.length} project?`)) return;
+    cekBusyAll = true; targets.forEach(p => p.busy = true); renderCekResults();
+    let fail = 0; const queue = targets.slice();
+    const worker = async () => { while (queue.length) { const p = queue.shift(); try { await runProjectAction(p, action); } catch (e) { fail++; } p.busy = false; renderCekResults(); } };
+    await Promise.all([worker(), worker(), worker()]);
+    cekBusyAll = false; renderCekResults();
+    if (fail) alert(`${fail} project gagal diproses (mungkin fitur jeda tidak tersedia di plan akun tersebut).`);
   }
   function copyAllDeployLinks() { const results = JSON.parse(localStorage.getItem('iyan_deploy_results') || '[]'); const links = results.filter(r => r.status === 'ok').map(r => r.url); if (links.length === 0) return alert('Belum ada link deploy yang sukses.'); copyToClipboard(links.join('\n'), null); }
   function clearAllDeployResults() { if (!confirm('Hapus semua riwayat deploy?')) return; localStorage.removeItem('iyan_deploy_results'); switchTab('vercel'); }
@@ -2169,8 +2393,7 @@ async function fetchAndSetUser(user) {
     if (resumeRaw) {
       setTimeout(() => {
         if(confirm('Terdeteksi ada proses deploy yang terputus karena halaman di-refresh. Lanjutkan pemantauan (polling) sampai selesai?')) {
-           iyanDeployFiles = []; switchTab('vercel');
-           setTimeout(() => { startMultiIyanDeploy(true); }, 1000);
+           iyanDeployFiles = []; resumeIyanDeploy();
         } else localStorage.removeItem('iyan_resume_deploy');
       }, 1000);
     }
