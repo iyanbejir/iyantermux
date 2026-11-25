@@ -77,7 +77,8 @@
     position: relative;
     overflow: hidden;
     transition: transform 0.15s var(--ease-smooth), box-shadow 0.2s, background-color 0.2s;
-    will-change: transform;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
   button:active, .premium-product-card:active, .panel-box-item:active, .wanz-link-item:active, .account-chip:active {
     transform: scale(0.96);
@@ -109,7 +110,7 @@
   .skeleton-card { padding: 16px; border-radius: 1rem; background: var(--card-bg); border: 1px solid var(--card-border); margin-bottom: 12px; }
 
   .glass { background: var(--card-bg); backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); border: 1px solid var(--card-border); }
-  .nav-btn { transition: all 0.35s var(--ease-spring); color: var(--text-color); opacity: 0.5; }
+  .nav-btn { transition: opacity 0.35s var(--ease-spring), transform 0.35s var(--ease-spring), color 0.35s var(--ease-spring); color: var(--text-color); opacity: 0.5; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .nav-btn.active { opacity: 1; }
   .nav-btn:active { transform: scale(0.85); }
 
@@ -122,7 +123,7 @@
 
   .modern-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); outline: none; }
 
-  .feature-item { transition: border-color 0.3s var(--ease-smooth), background-color 0.3s var(--ease-smooth), box-shadow 0.3s var(--ease-smooth); }
+  .feature-item { transition: border-color 0.3s var(--ease-smooth), background-color 0.3s var(--ease-smooth), box-shadow 0.3s var(--ease-smooth); touch-action: manipulation; }
   .feature-item.active { border-color: rgba(255,255,255,0.28); box-shadow: 0 6px 24px -8px rgba(0,0,0,0.4); }
   body.light-mode .feature-item.active { border-color: rgba(0,0,0,0.18); box-shadow: 0 6px 24px -8px rgba(0,0,0,0.12); }
   .feature-content { display: grid; grid-template-rows: 0fr; padding: 0 1.25rem; transition: grid-template-rows 0.42s var(--ease-out-expo), padding 0.35s var(--ease-smooth); will-change: grid-template-rows; }
@@ -134,11 +135,11 @@
 
   .hide-scroll::-webkit-scrollbar { display: none; }
   .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-  .wanz-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 1.25rem; transition: all 0.3s var(--ease-smooth); backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12); }
+  .wanz-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 1.25rem; transition: background-color 0.3s var(--ease-smooth), border-color 0.3s var(--ease-smooth); backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12); }
   .wanz-icon-box { width: 2.75rem; height: 2.75rem; border-radius: 0.85rem; display: flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.1); color: var(--text-color); flex-shrink: 0; }
-  .wanz-link-item { display: flex; align-items: center; justify-content: space-between; background: var(--card-bg); border: 1px solid var(--card-border); padding: 0.875rem 1rem; border-radius: 1rem; margin-bottom: 0.75rem; transition: all 0.2s var(--ease-smooth); backdrop-filter: blur(12px); }
+  .wanz-link-item { display: flex; align-items: center; justify-content: space-between; background: var(--card-bg); border: 1px solid var(--card-border); padding: 0.875rem 1rem; border-radius: 1rem; margin-bottom: 0.75rem; transition: background-color 0.2s var(--ease-smooth), border-color 0.2s var(--ease-smooth); backdrop-filter: blur(12px); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .wanz-link-item:active { background-color: rgba(255, 255, 255, 0.05); }
-  .fab-support { position: fixed; bottom: 6rem; right: 1.25rem; width: 3.5rem; height: 3.5rem; background-color: var(--btn-bg); color: var(--btn-text); border-radius: 1rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 100; transition: transform 0.2s var(--ease-smooth); }
+  .fab-support { position: fixed; bottom: 6rem; right: 1.25rem; width: 3.5rem; height: 3.5rem; background-color: var(--btn-bg); color: var(--btn-text); border-radius: 1rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 100; transition: transform 0.2s var(--ease-smooth); touch-action: manipulation; }
   .fab-support:active { transform: scale(0.9); }
   .clean-mode .profile-ui { opacity: 0; pointer-events: none; }
   .profile-ui { transition: opacity 0.3s ease; }
@@ -151,7 +152,7 @@
   .premium-card-desc { font-size: 0.75rem; color: var(--text-color); opacity: 0.7; margin-bottom: 0.75rem; }
   .premium-card-price { font-weight: 800; font-size: 1.25rem; color: var(--text-color); margin-bottom: 0.75rem; }
   .premium-btn { background: var(--text-color); color: var(--bg-body); padding: 0.5rem; border-radius: 0.5rem; font-weight: 700; text-align: center; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-  .panel-box-item { background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.22s var(--ease-smooth); }
+  .panel-box-item { background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.22s var(--ease-smooth), border-color 0.22s var(--ease-smooth); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .panel-box-item:hover { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.1); }
   #crop-modal { background: #000; z-index: 9999; }
   #crop-image { max-width: 100%; max-height: 100%; }
@@ -159,10 +160,10 @@
   .status-error { color: #f87171 !important; opacity: 1 !important; }
   .status-loading { color: #fbbf24 !important; opacity: 1 !important; }
 
-  .drop-zone { border: 2px dashed var(--card-border); border-radius: 14px; padding: 22px 14px; text-align: center; cursor: pointer; transition: all 0.25s var(--ease-smooth); }
+  .drop-zone { border: 2px dashed var(--card-border); border-radius: 14px; padding: 22px 14px; text-align: center; cursor: pointer; transition: background-color 0.25s var(--ease-smooth), border-color 0.25s var(--ease-smooth); }
   .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(255,255,255,0.04); }
   .drop-zone.has-files { border-color: #4ade80; background: rgba(74, 222, 128, 0.05); }
-  .account-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--card-border); background: rgba(255,255,255,0.06); cursor: pointer; user-select: none; transition: all 0.2s var(--ease-smooth); }
+  .account-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--card-border); background: rgba(255,255,255,0.06); cursor: pointer; user-select: none; transition: background-color 0.2s var(--ease-smooth), color 0.2s var(--ease-smooth), border-color 0.2s var(--ease-smooth), transform 0.2s var(--ease-smooth); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .account-chip.active { background: var(--btn-bg); color: var(--btn-text); border-color: transparent; }
   .deploy-result-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); border-radius: 10px; margin-bottom: 6px; flex-wrap: wrap; }
   .deploy-result-item.ok { border-left: 3px solid #4ade80; }
@@ -172,7 +173,7 @@
   .deploy-progress-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin-top: 8px; }
   .deploy-progress-bar > div { height: 100%; background: var(--accent); transition: width 0.3s var(--ease-smooth); }
   
-  .slider-dot { transition: all 0.3s ease; }
+  .slider-dot { transition: background-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
   #home-slider-track { transition: transform 0.3s ease-out; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   #home-slider-container { touch-action: pan-y; }
 
@@ -200,7 +201,7 @@
   .mp-btn { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--card-border); background: rgba(128,128,128,0.15); color: var(--text-color); display: flex; align-items: center; justify-content: center; cursor: pointer; }
   .mp-btn.main { width: 54px; height: 54px; background: var(--btn-bg); color: var(--btn-text); border-color: transparent; }
   .mp-list-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; margin: 0 4px 8px; }
-  .mp-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid transparent; cursor: pointer; margin-bottom: 6px; }
+  .mp-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid transparent; cursor: pointer; margin-bottom: 6px; touch-action: manipulation; }
   .mp-item:active { transform: scale(0.99); }
   .mp-item.active { background: rgba(128,128,128,0.2); border-color: var(--card-border); }
   .mp-num { width: 30px; height: 30px; border-radius: 10px; background: rgba(128,128,128,0.18); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
@@ -240,7 +241,7 @@
 
   .avatar-glow {
       box-shadow: 0 0 20px rgba(255, 255, 255, 0.2), 0 0 0 4px var(--bg-body);
-      transition: all 0.3s ease;
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
   }
   .avatar-glow:hover {
       box-shadow: 0 0 30px rgba(255, 255, 255, 0.5), 0 0 0 4px var(--btn-bg);
@@ -254,7 +255,7 @@
       padding: 10px 20px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.2);
       box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 13px; font-weight: 700;
       display: flex; align-items: center; gap: 8px; z-index: 99999;
-      opacity: 0; transition: all 0.3s var(--ease-spring); pointer-events: none;
+      opacity: 0; transition: transform 0.3s var(--ease-spring), opacity 0.3s var(--ease-spring); pointer-events: none;
   }
   .toast-notif.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 </style>
@@ -482,6 +483,34 @@
   bgMusic.src = MUSIC_TRACKS[0].url;
   bgMusic.setAttribute('data-src', MUSIC_TRACKS[0].url);
 
+  // ── NOTIFIKASI MEDIA (nama + gambar yang tampil di notif/lockscreen) ──
+  const MEDIA_SESSION_INFO = {
+    artist: 'Iyan Market',          // ganti nama yang tampil di bawah judul lagu
+    album: 'klip sound',          // ganti nama sumber/album
+    artworkUrl: 'https://cdn.phototourl.com/anon/2026-11-25-590f59b4-f465-4998-8bd5-6cf6a79ff37b.jpg' // ganti dengan link gambar (persegi, min 512x512)
+  };
+  function updateMediaSession(it) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: (it && it.title) || 'Iyan Console',
+        artist: MEDIA_SESSION_INFO.artist,
+        album: MEDIA_SESSION_INFO.album,
+        artwork: [
+          { src: MEDIA_SESSION_INFO.artworkUrl, sizes: '96x96',   type: 'image/png' },
+          { src: MEDIA_SESSION_INFO.artworkUrl, sizes: '192x192', type: 'image/png' },
+          { src: MEDIA_SESSION_INFO.artworkUrl, sizes: '512x512', type: 'image/png' }
+        ]
+      });
+    } catch (e) {}
+  }
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => toggleMusic());
+    navigator.mediaSession.setActionHandler('pause', () => toggleMusic());
+    navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+  }
+
   function activePlayer() {
     const it = getPlaylist()[currentIndex];
     return it && it.type === 'orig' ? origAudio : bgMusic;
@@ -533,6 +562,7 @@
     p.then(() => {
       if (player !== activePlayer()) return;
       isMusicPlaying = true; pendingMusicPlay = false; userPausedManually = false;
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       const btn = document.getElementById('music-toggle-btn');
       if (btn) btn.classList.remove('music-pending');
       updateMusicUI();
@@ -573,6 +603,7 @@
   function toggleMusic() {
     if (isMusicPlaying) {
       activePlayer().pause(); isMusicPlaying = false; pendingMusicPlay = false; userPausedManually = true;
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       const btn = document.getElementById('music-toggle-btn');
       if (btn) btn.classList.remove('music-pending');
       if (window._cleanupMusicUnlock) window._cleanupMusicUnlock();
@@ -598,6 +629,7 @@
       try { player.currentTime = 0; } catch (e) {}
     }
     isMusicPlaying = false;
+    updateMediaSession(it);
     if (it.type === 'orig') syncBannerVideo(true);
   }
 
@@ -816,6 +848,11 @@
   document.addEventListener('pointerdown', (e) => {
     const btn = e.target.closest('button, .premium-product-card, .panel-box-item, .account-chip');
     if (!btn) return;
+    // Promosikan ke GPU layer cuma selagi animasi klik berjalan (bukan permanen),
+    // biar banyak kartu/tombol kaca yang tampil bareng gak bikin berat terus-terusan.
+    btn.style.willChange = 'transform';
+    clearTimeout(btn._wcTimer);
+    btn._wcTimer = setTimeout(() => { btn.style.willChange = 'auto'; }, 250);
     const rect = btn.getBoundingClientRect();
     const size = Math.max(rect.width, rect.height, 40);
     const ripple = document.createElement('span');
