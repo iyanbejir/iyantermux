@@ -1198,7 +1198,7 @@ async function fetchAndSetUser(user) {
     document.getElementById('dropdown-menu').classList.add('hidden');
     const main = document.getElementById('main-content');
     main.innerHTML = '';
-    if (tab === 'profil') main.className = 'flex-1 overflow-y-auto hide-scroll pb-24 relative z-10 fade-in';
+    if (tab === 'profil') main.className = 'flex-1 overflow-y-auto hide-scroll pb-24 relative z-10';
     else main.className = 'flex-1 overflow-y-auto hide-scroll px-4 pb-24 relative z-10 fade-in';
     
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1930,8 +1930,33 @@ async function fetchAndSetUser(user) {
   // ═══════════════════════════════════════════════════════════
   // RENDER: PROFIL
   // ═══════════════════════════════════════════════════════════
+  function renderProfilSkeleton(container) {
+    container.innerHTML = `
+      <div class="fade-in">
+        <div class="relative w-full aspect-[16/9] mb-4 p-1">
+          <div class="absolute inset-1 rounded-2xl skeleton"></div>
+          <div class="absolute bottom-1 left-4 w-20 h-20 rounded-full skeleton border-4 border-[var(--bg-body)]"></div>
+        </div>
+        <div class="px-5 mb-6 mt-2">
+          <div class="skeleton skeleton-line w-50" style="height:22px;"></div>
+          <div class="skeleton skeleton-line w-30 mt-2" style="height:14px;"></div>
+        </div>
+        <div class="flex items-center gap-3 px-5 mb-6">
+          <div class="skeleton" style="width:40px;height:40px;border-radius:9999px;"></div>
+          <div class="skeleton" style="width:40px;height:40px;border-radius:9999px;"></div>
+          <div class="skeleton" style="width:40px;height:40px;border-radius:9999px;"></div>
+        </div>
+        <div class="px-4 space-y-3">
+          ${skeletonCard(1)}
+          ${skeletonCard(1)}
+          ${skeletonCard(1)}
+        </div>
+      </div>`;
+  }
+
   async function renderProfil(container) {
     if (!currentUser) { container.innerHTML = '<div class="p-8 text-center text-zinc-400">Silakan login dulu.</div>'; return; }
+    renderProfilSkeleton(container);
     const u = currentUser;
     let mediaHTML = '';
     if (u.background && u.background.url) {
@@ -1974,7 +1999,8 @@ async function fetchAndSetUser(user) {
     }
     const premiumBadgeHTML = `<span class="${badgeClass} px-2 py-0.5 rounded text-[10px] font-bold ml-2 uppercase">${badgeText}</span>`;
     container.innerHTML = `
-      <div class="relative w-full aspect-[16/9] mb-4 fade-in p-1">
+      <div class="fade-in">
+      <div class="relative w-full aspect-[16/9] mb-4 p-1">
         <div id="profile-banner" class="absolute inset-1 overflow-hidden bg-zinc-800 border-2 border-white/20 rounded-2xl shadow-2xl ${isCleanMode ? 'clean-mode' : ''}">
           ${mediaHTML}
           <div class="profile-ui absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none transition-opacity duration-300"></div>
@@ -1999,7 +2025,6 @@ async function fetchAndSetUser(user) {
       <div class="px-5 mb-6 mt-2">
         <h2 class="text-2xl font-extrabold text-white flex items-center gap-2 flex-wrap">
           ${u.name || u.username} 
-          <span class="text-lg">👑</span> 
           ${premiumBadgeHTML}
         </h2>
         <p class="text-sm font-mono text-blue-400 font-bold mt-1 tracking-wider">ID: ${u.customId || '00000'}</p>
@@ -2021,6 +2046,7 @@ async function fetchAndSetUser(user) {
         <button onclick="logout()" class="w-full bg-red-500/10 text-red-500 border border-red-500/20 font-bold rounded-xl py-3 text-sm hover:bg-red-500/20 transition-colors">Log Out</button>
       </div>
       ${adminPanel}
+      </div>
     `;
   }
 
