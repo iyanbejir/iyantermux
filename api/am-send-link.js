@@ -8,39 +8,48 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { email } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
+    const { email } = body || {};
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ ok: false, message: 'Email tidak valid' });
     }
 
     const fp = crypto.randomBytes(16).toString('hex');
 
-    const upstream = await fetch('https://am.noxxyrorr.biz.id/api/send-link', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/plain, */*',
-        'Origin': 'https://am.noxxyrorr.biz.id',
-        'Referer': 'https://am.noxxyrorr.biz.id/',
-        'X-Device-FP': fp,
-      },
-      body: JSON.stringify({ email }),
-    });
+    let upstream;
+    try {
+      upstream = await fetch('https://am.noxxyrorr.biz.id/api/send-link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://am.noxxyrorr.biz.id',
+          'Referer': 'https://am.noxxyrorr.biz.id/',
+          'X-Device-FP': fp,
+        },
+        body: JSON.stringify({ email }),
+      });
+    } catch (netErr) {
+      // Request ke upstream gagal total (DNS/timeout/koneksi dari server Vercel)
+      return res.status(502).json({ ok: false, message: `Gagal konek ke upstream: ${netErr.message}`, debug: { stage: 'fetch', error: String(netErr) } });
+    }
 
     const text = await upstream.text();
     let data = null;
     try { data = JSON.parse(text); } catch (e) {}
 
     if (!upstream.ok || !data || !data.ok) {
-      return res.status(upstream.status === 200 ? 502 : upstream.status).json({
+      return res.status(502).json({
         ok: false,
-        message: (data && data.message) || `Upstream error (${upstream.status})`,
+        message: (data && data.message) || `Upstream status ${upstream.status}`,
+        debug: { stage: 'upstream-response', status: upstream.status, bodySnippet: text.slice(0, 500) },
       });
     }
 
     // fp dikirim balik ke client supaya dipakai lagi di langkah verify
     return res.status(200).json({ ...data, fp });
   } catch (e) {
-    return res.status(500).json({ ok: false, message: e.message || 'Proxy error' });
+    return res.status(500).json({ ok: false, message: `Proxy error: ${e.message}`, debug: { stage: 'handler', error: String(e && e.stack || e) } });
   }
 };
