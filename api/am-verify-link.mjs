@@ -16,8 +16,10 @@ export default async function handler(req, res) {
     }
 
     const deviceFp = fp || crypto.randomBytes(16).toString('hex');
+    // customOrderId SENGAJA TIDAK dikirim ke upstream: fitur itu khusus pengguna VIP
+    // dan upstream menolak (403) seluruh request kalau field ini ada tanpa vipKey.
+    // Order ID custom cuma dipakai buat menimpa tampilan setelah verifikasi sukses.
     const verifyBody = { email, magicLink, cookie };
-    if (customOrderId) verifyBody.customOrderId = customOrderId;
 
     let upstream;
     try {
