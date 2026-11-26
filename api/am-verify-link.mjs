@@ -10,12 +10,14 @@ export default async function handler(req, res) {
   try {
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
-    const { email, magicLink, cookie, fp } = body || {};
+    const { email, magicLink, cookie, fp, customOrderId } = body || {};
     if (!email || !magicLink) {
       return res.status(400).json({ ok: false, message: 'Email & magic link wajib diisi' });
     }
 
     const deviceFp = fp || crypto.randomBytes(16).toString('hex');
+    const verifyBody = { email, magicLink, cookie };
+    if (customOrderId) verifyBody.customOrderId = customOrderId;
 
     let upstream;
     try {
@@ -28,7 +30,7 @@ export default async function handler(req, res) {
           'Referer': 'https://am.noxxyrorr.biz.id/',
           'X-Device-FP': deviceFp,
         },
-        body: JSON.stringify({ email, magicLink, cookie }),
+        body: JSON.stringify(verifyBody),
       });
     } catch (netErr) {
       return res.status(502).json({ ok: false, message: `Gagal konek ke upstream: ${netErr.message}`, debug: { stage: 'fetch', error: String(netErr) } });
@@ -45,6 +47,10 @@ export default async function handler(req, res) {
         debug: { stage: 'upstream-response', status: upstream.status, bodySnippet: text.slice(0, 500) },
       });
     }
+
+    // Kalau upstream gak ikut memakai customOrderId yang kita kirim, paksa pakai punya kita saja
+    if (customOrderId && data.userData) data.userData.orderId = customOrderId;
+    else if (customOrderId) data.orderId = customOrderId;
 
     return res.status(200).json(data);
   } catch (e) {
