@@ -483,19 +483,6 @@
   const SUPABASE_KEY = "sb_publishable_nFQxcOj6AlbHzCVWZZRerQ_3ANHDI8X";
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // ── SECURITY: escape semua string user-controlled sebelum ditaruh di innerHTML ──
-  // Cegah stored XSS (avatar/background url, tiktok, wa, full_name, dll) karena
-  // field2 ini dirender via template literal + innerHTML, bukan textContent.
-  function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   // ═══════════════════════════════════════════════════════════
   // MUSIC PLAYER — AUTO PLAY + DUAL AUDIO
   // ═══════════════════════════════════════════════════════════
@@ -2280,11 +2267,11 @@
     const u = currentUser;
     let mediaHTML = '';
     if (u.background && u.background.url) {
-      const fit = escapeHtml(u.background.fit || 'cover'); const pos = escapeHtml(u.background.position || 'center'); const styleStr = `object-fit: ${fit}; object-position: ${pos};`;
-      if (u.background.type === 'video') mediaHTML = `<video src="${escapeHtml(u.background.url)}" autoplay loop muted playsinline class="absolute inset-0 w-full h-full" style="${styleStr}"></video>`;
-      else mediaHTML = `<img src="${escapeHtml(u.background.url)}" class="absolute inset-0 w-full h-full" style="${styleStr}">`;
+      const fit = u.background.fit || 'cover'; const pos = u.background.position || 'center'; const styleStr = `object-fit: ${fit}; object-position: ${pos};`;
+      if (u.background.type === 'video') mediaHTML = `<video src="${u.background.url}" autoplay loop muted playsinline class="absolute inset-0 w-full h-full" style="${styleStr}"></video>`;
+      else mediaHTML = `<img src="${u.background.url}" class="absolute inset-0 w-full h-full" style="${styleStr}">`;
     } else mediaHTML = `<div class="absolute inset-0 w-full h-full bg-zinc-800"></div>`;
-    const avatarContent = u.avatar ? `<img src="${escapeHtml(u.avatar)}" class="w-full h-full object-cover">` : `<span class="text-5xl font-extrabold text-zinc-400">${escapeHtml(u.username.charAt(0).toUpperCase())}</span>`;
+    const avatarContent = u.avatar ? `<img src="${u.avatar}" class="w-full h-full object-cover">` : `<span class="text-5xl font-extrabold text-zinc-400">${u.username.charAt(0).toUpperCase()}</span>`;
     let adminPanel = '';
     if (u.role === 'developer') {
       const { data: allUsers } = await supabaseClient.from('profiles').select('*').order('custom_id', { ascending: true });
@@ -2296,8 +2283,8 @@
             <div class="wanz-card p-3 flex flex-col gap-2">
               <div class="flex justify-between items-center">
                 <div>
-                  <p class="font-bold text-sm text-white">${escapeHtml(usr.full_name || 'User')}</p>
-                  <p class="text-[10px] text-zinc-400 font-mono">ID: <span class="text-blue-400 font-bold">${escapeHtml(usr.custom_id)}</span> | Role: ${escapeHtml(usr.role)}</p>
+                  <p class="font-bold text-sm text-white">${usr.full_name || 'User'}</p>
+                  <p class="text-[10px] text-zinc-400 font-mono">ID: <span class="text-blue-400 font-bold">${usr.custom_id}</span> | Role: ${usr.role}</p>
                 </div>
               </div>
               <div class="flex gap-2 items-center mt-1">
@@ -2344,21 +2331,21 @@
       </div>
       <div class="px-5 mb-6 mt-2">
         <h2 class="text-2xl font-extrabold text-white flex items-center gap-2 flex-wrap">
-          ${escapeHtml(u.name || u.username)} 
+          ${u.name || u.username} 
           ${premiumBadgeHTML}
         </h2>
         <p class="text-sm font-mono text-blue-400 font-bold mt-1 tracking-wider">ID: ${u.customId || '00000'}</p>
         <p class="text-xs text-zinc-400 mt-2">Semua link resmi Iyan ada di sini</p>
       </div>
       <div class="flex items-center gap-3 px-5 mb-6">
-        <a href="https://tiktok.com/@${escapeHtml(u.tiktok)}" target="_blank" class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/></svg></a>
+        <a href="https://tiktok.com/@${u.tiktok}" target="_blank" class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/></svg></a>
         <a href="https://t.me/${DEFAULTS.telegram}" target="_blank" class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></a>
-        <a href="https://${escapeHtml(u.wa)}" target="_blank" class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></a>
+        <a href="https://${u.wa}" target="_blank" class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></a>
       </div>
       <div class="space-y-3 mb-8 px-4">
-        <a href="https://tiktok.com/@${escapeHtml(u.tiktok)}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/></svg></div><span class="font-bold text-sm text-white">TikTok</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
+        <a href="https://tiktok.com/@${u.tiktok}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/></svg></div><span class="font-bold text-sm text-white">TikTok</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
         <a href="https://t.me/${DEFAULTS.telegram}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div><span class="font-bold text-sm text-white">Telegram</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
-        <a href="https://${escapeHtml(u.wa)}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></div><span class="font-bold text-sm text-white">WhatsApp Admin</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
+        <a href="https://${u.wa}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></div><span class="font-bold text-sm text-white">WhatsApp Admin</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
         <a href="${DEFAULTS.waChannel}" target="_blank" class="wanz-link-item"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></div><span class="font-bold text-sm text-white">Saluran WA</span></div><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></a>
       </div>
       <div class="px-4 pb-4 space-y-3">
