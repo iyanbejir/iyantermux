@@ -31,7 +31,9 @@ export default async function handler(req, res) {
   // Tolak request cross-origin dari domain yang gak dikenal.
   const origin = req.headers.origin;
   if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-    return res.status(403).json({ ok: false, message: 'Origin not allowed' });
+    // SEMENTARA buat debug: tampilin origin asli yang diterima server.
+    // Hapus baris `receivedOrigin` ini lagi setelah ALLOWED_ORIGINS dipastikan benar.
+    return res.status(403).json({ ok: false, message: 'Origin not allowed', receivedOrigin: origin });
   }
 
   try {
