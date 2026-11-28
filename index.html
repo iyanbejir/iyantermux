@@ -614,8 +614,9 @@
 
   function activePlayer() {
     const it = getPlaylist()[currentIndex];
-    return it && it.type === 'orig' ? origAudio : bgMusic;
+    return playerFor(it);
   }
+  function playerFor(it) { return it && it.type === 'orig' ? origAudio : (it && it.type === 'yt' ? ytShim : bgMusic); }
 
   let isMusicPlaying = false;
   let pendingMusicPlay = false;
@@ -721,9 +722,8 @@
     if (!list.length) return;
     currentIndex = ((i % list.length) + list.length) % list.length;
     const it = list[currentIndex];
-    const player = it.type === 'orig' ? origAudio : bgMusic;
-    const other = player === bgMusic ? origAudio : bgMusic;
-    other.pause();
+    const player = playerFor(it);
+    [bgMusic, origAudio, ytShim].forEach(pl => { if (pl !== player) pl.pause(); });
     if (player.getAttribute('data-src') !== it.url) {
       player.src = it.url;
       player.setAttribute('data-src', it.url);
@@ -764,8 +764,62 @@
   }
   setInterval(() => syncBannerVideo(false), 1000);
 
+  // ── Pemutar YouTube resmi (IFrame API) dibungkus agar dipakai seperti <audio> ──
+  const ytShim = (() => {
+    const L = {}, A = {};
+    let yp = null, ready = false, loading = false, vid = '', loadedId = '', want = false, st = -1;
+    const emit = t => (L[t] || []).slice().forEach(f => { try { f(); } catch (e) {} });
+    function build() {
+      const w = document.createElement('div');
+      w.style.cssText = 'position:fixed;left:-400px;bottom:0;width:220px;height:220px;opacity:.01;pointer-events:none;z-index:-1';
+      w.innerHTML = '<div id="yt-host"></div>';
+      document.body.appendChild(w);
+      yp = new YT.Player('yt-host', {
+        width: 220, height: 220,
+        playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, origin: location.origin },
+        events: {
+          onReady: () => { ready = true; if (vid) { loadedId = vid; want ? yp.loadVideoById(vid) : yp.cueVideoById(vid); } },
+          onStateChange: e => { st = e.data; if (st === 1) { emit('loadedmetadata'); emit('play'); } else if (st === 2) emit('pause'); else if (st === 0) emit('ended'); },
+          onError: () => emit('error')
+        }
+      });
+      setInterval(() => { if (st === 1) emit('timeupdate'); }, 500);
+    }
+    function ensure() {
+      if (yp || loading) return; loading = true;
+      if (window.YT && window.YT.Player) return build();
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) { try { prev(); } catch (e) {} } build(); };
+      const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(sc);
+    }
+    return {
+      ensure, load() {},
+      readyState: 4,
+      addEventListener(t, f) { (L[t] = L[t] || []).push(f); },
+      getAttribute(k) { return A[k] || null; },
+      setAttribute(k, v) { A[k] = v; },
+      set src(u) { vid = String(u || '').replace(/^yt:/, ''); st = -1; ensure(); if (ready) { loadedId = vid; yp.loadVideoById(vid); } },
+      get currentTime() { return ready && yp.getCurrentTime ? yp.getCurrentTime() || 0 : 0; },
+      set currentTime(v) { if (ready && yp.seekTo) yp.seekTo(v, true); },
+      get duration() { return ready && yp.getDuration ? (yp.getDuration() || NaN) : NaN; },
+      pause() { want = false; if (ready && yp.pauseVideo) yp.pauseVideo(); },
+      play() {
+        want = true; ensure();
+        if (ready && vid) { if (loadedId !== vid) { loadedId = vid; yp.loadVideoById(vid); } else yp.playVideo(); }
+        return new Promise((res, rej) => {
+          let done = false;
+          const t = setTimeout(() => { if (done) return; done = true; off(); rej({ name: 'NotAllowedError' }); }, 10000);
+          const ok = () => { if (done) return; done = true; off(); res(); };
+          const off = () => { clearTimeout(t); L.play = (L.play || []).filter(f => f !== ok); };
+          (L.play = L.play || []).push(ok);
+          if (st === 1) ok();
+        });
+      }
+    };
+  })();
+
   // ── Event kedua player: hanya player aktif yang dihitung ──
-  [bgMusic, origAudio].forEach(pl => {
+  [bgMusic, origAudio, ytShim].forEach(pl => {
     pl.addEventListener('play', () => {
       if (pl !== activePlayer()) return;
       isMusicPlaying = true; pendingMusicPlay = false;
@@ -886,7 +940,7 @@
   // ═══════════════════════════════════════════════════════════
   // YT MUSIC (kartu di Home) — butuh server.js (lihat petunjuk)
   // ═══════════════════════════════════════════════════════════
-  const YTM_API = ''; // ← ISI alamat server kamu, contoh: 'https://api.domainkamu.com' (tanpa / di akhir)
+  const YTM_API = ''; // kosong = pakai /api/ytm-search di domain yang sama (Vercel). Isi hanya kalau API-nya di domain lain
   let ytResults = [];
 
   function ytRefreshCard() {
@@ -921,7 +975,7 @@
   const ytThumb = u => (/^https:\/\/[^"'()\s]+$/.test(u || '') ? u : '');
   function ytLoad(k) { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
   function ytStore(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
-  function ytItem(f) { return { title: f.title, sub: f.sub || 'YouTube Music', url: `${YTM_API}/api/ytm/stream?id=${f.id}`, type: 'yt', thumb: ytThumb(f.thumb), vid: f.id }; }
+  function ytItem(f) { return { title: f.title, sub: f.sub || 'YouTube Music', url: `yt:${f.id}`, type: 'yt', thumb: ytThumb(f.thumb), vid: f.id }; }
   let ytFavs = ytLoad('ytm_favs').filter(f => f && YT_ID.test(f.id)).map(f => ({ id: f.id, title: String(f.title || ''), sub: String(f.sub || ''), thumb: ytThumb(f.thumb) }));
   let ytHist = ytLoad('ytm_hist').filter(h => typeof h === 'string' && h).slice(0, 15);
   let ytView = 'hist', ytStatus = '';
@@ -976,10 +1030,9 @@
   async function ytSearch() {
     const q = document.getElementById('ytm-q')?.value.trim(); if (!q) return;
     ytAddHist(q); ytView = 'res';
-    if (!YTM_API) { ytStatus = 'Alamat server belum diisi. Isi <b>YTM_API</b> di index.html.'; return ytRenderRes(); }
     ytStatus = 'Mencari…'; ytResults = []; ytRenderRes();
     try {
-      const r = await fetch(`${YTM_API}/api/ytm/search?q=${encodeURIComponent(q)}`);
+      const r = await fetch(`${YTM_API}/api/ytm-search?q=${encodeURIComponent(q)}`);
       const j = await r.json();
       if (!j.status) throw new Error(j.error || 'gagal');
       ytResults = (j.data || []).filter(x => YT_ID.test(x.videoId || '') && x.type !== 'artist' && x.type !== 'album').slice(0, 10);
@@ -993,6 +1046,7 @@
     ytPlayId(x.videoId);
   }
   function ytPlayId(id) { const t = ytQueue.find(q => q.vid === id); if (t) playIndex(getPlaylist().indexOf(t)); }
+  if (ytFavs.length) setTimeout(() => ytShim.ensure(), 1500); // siapkan pemutar kalau sudah punya favorit
   // kartu ikut ter-update setiap Home dirender ulang
   { const _rh = renderHome; renderHome = function () { const r = _rh.apply(this, arguments); ytRefreshCard(); return r; }; }
 
@@ -1575,7 +1629,7 @@
           </div>
           <div class="ytm-barw" onclick="ytSeek(event)"><div class="ytm-bar"><i id="ytm-prog"></i></div></div>
           <div class="ytm-search">
-            <input id="ytm-q" type="search" placeholder="Cari lagu di YouTube Music…" onkeydown="if(event.key==='Enter')ytSearch()" onfocus="if(!this.value.trim())ytOpen('hist')" oninput="if(!this.value.trim())ytOpen('hist')">
+            <input id="ytm-q" type="search" placeholder="Cari lagu di YouTube Music…" onkeydown="if(event.key==='Enter')ytSearch()" onfocus="ytShim.ensure();if(!this.value.trim())ytOpen('hist')" oninput="if(!this.value.trim())ytOpen('hist')">
             <button class="ytm-b" onclick="ytSearch()" aria-label="Cari"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg></button>
             <button class="ytm-b" onclick="openMusicMenu()" aria-label="Playlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg></button>
           </div>
